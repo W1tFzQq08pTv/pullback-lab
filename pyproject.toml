@@ -1,0 +1,14 @@
+[project]
+name = "pullback-lab"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115,<1",
+    "uvicorn>=0.30,<1",
+    "httpx>=0.28,<1",
+    "pandas>=2.2,<3",
+    "akshare>=1.17",
+    "beautifulsoup4>=4.12",
+    "pypdf>=5",
+    "baostock>=0.8.9,<0.9",
+]
