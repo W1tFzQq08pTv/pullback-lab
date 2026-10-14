@@ -55,6 +55,68 @@ uv sync --frozen
 npm --prefix web ci
 ```
 
+### 使用 Docker Compose
+
+安装 Docker Engine / Docker Desktop 和 Docker Compose v2+，在仓库根目录运行：
+
+```sh
+docker compose up -d --build --wait
+```
+
+访问 **http://127.0.0.1:8080**。镜像构建使用锁定依赖，前端编译为静态资源，由 FastAPI 与 API 一起提供；只运行一个 Python 容器，无需容器内 Nginx。运行镜像不包含 Node.js、uv 或依赖下载缓存。镜像名固定为 `pullback-lab:latest`，可通过 `PULLBACK_IMAGE_TAG` 修改标签；不再随 Compose 项目名变化。构建阶段仅保留 JavaScript 引擎针对当前平台实际加载的动态库，排除 NumPy/Pandas 的上游自测目录，并执行引擎自检。新浪解码脚本及原许可保存在 `backend/vendor/`，无需安装完整 AKShare 及其接口依赖。首次构建需要下载基础镜像及依赖。
+
+```sh
+docker compose logs -f --tail=100  # 查看日志
+docker compose down              # 停止并移除容器，保留数据卷
+```
+
+可复制 `.env.example` 为 `.env` 后调整端口、并发和可选 Token；Compose 自动读取 `.env`。默认仅绑定本机；如需受信任局域网访问，可设置 `PULLBACK_BIND_ADDRESS=0.0.0.0`。应用仍只接受 localhost/IP 形式的访问主机，不支持直接用自定义域名访问。
+
+服务器已有 Nginx 时，将所有请求代理到 `http://127.0.0.1:8080` 即可；无需另行部署前端文件。HTTP/IP 访问示例（保留原始 Host 和端口，供同源校验使用）：
+
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:8080;
+    proxy_set_header Host $http_host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_read_timeout 300s;
+}
+```
+
+当前应用的主机校验只允许 localhost/IP；自定义域名及 HTTPS 终止代理还需另行配置应用的可信主机、来源与代理边界，此示例不表示已支持这些部署方式。
+
+容器数据保存在项目的 `lab-data` 命名卷中（通常为 `pullback-lab_lab-data`），与本机 `data/` 独立，首次启动是空库。**不要使用 `docker compose down -v`，它会删除数据卷。** 不要扩容 backend 或增加 Uvicorn worker；任务并发使用上述环境变量调整。
+
+备份、恢复和迁移本机数据前先停止服务，复制整个目录。以下示例把容器数据备份到新的 `backup/` 目录：
+
+```sh
+docker compose stop
+mkdir -p backup
+docker compose cp backend:/app/data/. ./backup/
+docker compose start
+```
+
+迁入本机数据或恢复备份时，先执行 `docker compose create` 创建容器与卷，再在容器停止状态下执行 `docker compose cp ./data/. backend:/app/data/`（恢复备份时把 `./data/.` 换成备份目录）。复制后修正属主，再启动：
+
+```sh
+docker compose run --rm --no-deps --user root backend chown -R 10001:10001 /app/data
+docker compose up -d --wait
+```
+
+恢复应使用空数据卷，避免把两份 SQLite 数据及 WAL 文件混合；保留旧卷作为回退。导入历史整包可运行 `docker compose exec backend python scripts/import_bulk.py sh sz bj`。
+
+### GitHub Actions 检查
+
+`.github/workflows/check.yml` 在 push、pull request 和手动触发时运行：
+
+- 校验 Compose 配置。
+- 构建单个多阶段镜像：按锁文件安装依赖，执行 TypeScript 检查、Vite 生产构建和 Python 语法编译。
+- 启动全新数据卷上的服务，等待健康检查通过。
+- 检查首页、构建资源、空库概况及同源 POST，并验证不存在的 API 与资源返回 404。
+- 失败输出容器日志，最后停止服务。
+
+CI 不依赖行情源或 Token，不发布镜像、不部署；这些检查不替代真实行情研究、浏览器交互和回测结果验证。
+
 ### 第一次研究
 
 1. 点击左上角股票按钮，按代码、名称或拼音首字母搜索。

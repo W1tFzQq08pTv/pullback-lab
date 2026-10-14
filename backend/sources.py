@@ -1,5 +1,7 @@
 """Public feeds, archived before parsing; no silent fill or forward-fill."""
 import io
+from contextlib import nullcontext
+from pathlib import Path
 import json
 import re
 import time
@@ -62,9 +64,13 @@ class Feed:
         encoded = body.split('=', 1)[1].split(';')[0].strip().strip('"')
         with SINA_DECODE_LOCK:
             import py_mini_racer
-            from akshare.stock.cons import hk_js_decode
-            with py_mini_racer.MiniRacer() as ctx:
-                ctx.eval(hk_js_decode)
+            decoder = Path(__file__).with_name('vendor').joinpath('sina_decoder.js').read_text()
+            engine = py_mini_racer.MiniRacer()
+            # The Linux legacy binding releases its context on object disposal;
+            # modern mini-racer provides an explicit context manager.
+            manager = engine if hasattr(engine, '__enter__') else nullcontext(engine)
+            with manager as ctx:
+                ctx.eval(decoder)
                 return ctx.call('d', encoded)
 
     def calendar(self):

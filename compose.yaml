@@ -1,0 +1,25 @@
+services:
+  backend:
+    image: pullback-lab:${PULLBACK_IMAGE_TAG:-latest}
+    build:
+      context: .
+      target: backend
+    ports:
+      - "${PULLBACK_BIND_ADDRESS:-127.0.0.1}:${PULLBACK_PORT:-8080}:8765"
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 60s
+    environment:
+      PULLBACK_TASK_CONCURRENCY: ${PULLBACK_TASK_CONCURRENCY:-2}
+      PULLBACK_OPTIMIZER_WORKERS: ${PULLBACK_OPTIMIZER_WORKERS:-2}
+      TUSHARE_TOKEN: ${TUSHARE_TOKEN:-}
+    volumes:
+      - lab-data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/api/overview', timeout=5).read()"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+volumes:
+  lab-data:
