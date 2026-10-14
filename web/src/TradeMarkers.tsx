@@ -1,6 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
 import type {EChartsType} from 'echarts/core';
-import {fixed,type Row} from './types';
+import {exactFixed as fixed,type Row} from './types';
 
 export type TradeMarker={index:number;date:string;side:'buy'|'sell';anchor:number;trades:Row[]};
 type Positioned=TradeMarker & {x:number;y:number;anchorX:number;anchorY:number;width:number;placed:boolean;points:{x:number;y:number;trade:Row}[]};
@@ -20,7 +20,7 @@ export function TradeMarkers({chart,markers,onSelect}:{chart:EChartsType;markers
    const next=markers.filter(m=>m.index>=zoom.startValue&&m.index<=zoom.endValue).flatMap(m=>{
     const [x,y]=chart.convertToPixel({xAxisIndex:0,yAxisIndex:0},[m.index,m.anchor]) as number[];
     if(!Number.isFinite(x)||!Number.isFinite(y)||x<0||x>chart.getWidth())return [];
-    const points=m.trades.map(trade=>{const [px,py]=chart.convertToPixel({xAxisIndex:0,yAxisIndex:0},[m.index,Number(trade.price)]) as number[];return {x:px,y:py,trade};});
+    const points=m.trades.map(trade=>{const [px,py]=chart.convertToPixel({xAxisIndex:0,yAxisIndex:0},[m.index,Number(trade.chart_price??trade.price)]) as number[];return {x:px,y:py,trade};});
     const width=m.trades.length>1?20+String(m.trades.length).length*5:18;
     const half=width/2,halfHeight=9;
     const preferred=y+(m.side==='buy'&&y+20+halfHeight<=bounds.bottom?20:-20);
@@ -28,7 +28,7 @@ export function TradeMarkers({chart,markers,onSelect}:{chart:EChartsType;markers
     const ys=[clamp(preferred,bounds.top+halfHeight,bounds.bottom-halfHeight)];
     for(let cy=bounds.bottom-halfHeight;cy>=bounds.top+halfHeight;cy-=23)ys.push(cy);
     const candidates=ys.flatMap(cy=>xs.map(cx=>({x:cx,y:cy,score:Math.abs(cx-x)*2+Math.abs(cy-preferred)}))).sort((a,b)=>a.score-b.score);
-    const slot=candidates.find(c=>c.x-half>=bounds.left&&c.x+half<=bounds.right&&!occupied.some(o=>Math.abs(c.x-o.x)<(width+o.width)/2+4&&Math.abs(c.y-o.y)<22));
+    const slot=candidates.find(c=>(chart.getWidth()>600||Math.abs(c.y-y)<=56)&&c.x-half>=bounds.left&&c.x+half<=bounds.right&&!occupied.some(o=>Math.abs(c.x-o.x)<(width+o.width)/2+4&&Math.abs(c.y-o.y)<22));
     if(slot)occupied.push({...slot,width});
     return [{...m,x:slot?.x??x,y:slot?.y??y,anchorX:x,anchorY:y,width,placed:!!slot,points}];
    });

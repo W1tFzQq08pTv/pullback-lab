@@ -7,10 +7,10 @@ export type Issue={code:string;date:string|null;message:string;symbol:string;sev
 export type Snapshot={id:string;created:string;start:string;end:string;bars:number;events:number;errors:number};
 export type Overview={stock:Stock;snapshot:Snapshot|null;defaults:Params;defaults_profile?:{revision:string;params:Partial<Params>;note:string;created?:string;snapshot_id?:string;range?:{start:string;end:string};metrics?:Record<StrategyId,Metrics>;conditions?:Params}|null;active_task:string|null};
 export type RepairReport={attempted:string;requested:number;confirmed_total?:number;filled:{date:string;symbol:string;source:string}[];suspensions:string[];remaining:number;other_errors:number;cached:boolean;failures:{stage:string;message:string;date?:string}[];evidence?:{source:string;start_source?:string;title:string;start:string;resume:string}[]};
-export type Task={id:string;kind:string;status:string;progress:number;message:string;result:{run_id?:string;symbol?:string;optimization_id?:string;cached?:boolean;params?:Params;step?:number;step_progress?:number;steps?:{id:string;label:string;status:string;message?:string}[]}|null};
+export type Task={id:string;kind:string;status:string;progress:number;message:string;result:{run_id?:string;symbol?:string;optimization_id?:string;cached?:boolean;params?:Params;request_params?:Params;reason?:string;step?:number;step_progress?:number;steps?:{id:string;label:string;status:string;message?:string}[]}|null};
 export type Metrics={total_return:number;annual_return:number;max_drawdown:number;trade_count:number;closed_trades:number;win_rate:number|null;exposure:number;fees:number;dividend_tax:number;ending:Row};
 export type Book={metrics:Metrics;curve:Row[];trades:Row[];ledger:Row[];rejected:Row[]};
-export type Run={id:string;created:string;snapshot_id:string;params:Params;result:{strategy_id?:StrategyId;strategy_name?:string;variants?:Partial<Record<StrategyId,{name:string;book:Book;chart:Row[];rules:string;source?:string;selection?:{note:string}}>>;fallback?:{requested_start:string;actual_start:string;excluded_through:string;data_start:string;warmup:number};engine:string;checksum:string;strategy:Book;benchmark:Book;chart:Row[]}};
+export type Run={id:string;created:string;snapshot_id:string;params:Params;result:{data_coverage?:{latest:string;requested_end:string;backtest_end:string;message:string};strategy_id?:StrategyId;strategy_name?:string;variants?:Partial<Record<StrategyId,{name:string;book:Book;chart:Row[];rules:string;source?:string;selection?:{note:string}}>>;fallback?:{reason?:string;requested_start:string;actual_start:string;excluded_through:string;data_start:string;warmup:number};engine:string;checksum:string;strategy:Book;benchmark:Book;chart:Row[]}};
 export type RunHead=Omit<Run,'result'>;
 export async function api<T>(path:string,body?:unknown):Promise<T>{
  const r=await fetch('/api'+path,body===undefined?undefined:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
@@ -20,7 +20,8 @@ export async function api<T>(path:string,body?:unknown):Promise<T>{
  if(!r.ok){const d=data?.detail??`请求失败（HTTP ${r.status}）`;throw new Error(typeof d==='string'?d:d?.message?d.message+'：'+(d.issues||[]).slice(0,4).map((i:Issue)=>`${i.date||''} ${i.message}`).join('；'):JSON.stringify(d));}
  return data;
 }
-export const fixed=(n:unknown,digits=2)=>typeof n==='number'&&Number.isFinite(n)?(Math.abs(n)<.5*10**(-digits)?0:n).toLocaleString('zh-CN',{minimumFractionDigits:digits,maximumFractionDigits:digits}):'—';
+export const exactFixed=(n:unknown,digits=2)=>typeof n==='number'&&Number.isFinite(n)?(Math.abs(n)<.5*10**(-digits)?0:n).toLocaleString('zh-CN',{minimumFractionDigits:digits,maximumFractionDigits:digits}):'—';
+export const fixed=(n:unknown,digits=2)=>typeof n==='number'&&Number.isFinite(n)&&Math.abs(n)>=1000?`${Number((n/1000).toFixed(Math.max(2,digits)))}k`:exactFixed(n,digits);
 export const pct=(n:number|null)=>n===null||!Number.isFinite(n)?'—':`${fixed(n*100)}%`;
 export const num=(n:unknown)=>typeof n==='number'?fixed(n):String(n??'—');
 export const cell=(key:string,n:unknown)=>key==='drawdown'?pct(typeof n==='number'?n:null):['shares','pending_shares'].includes(key)?fixed(n,0):num(n);
