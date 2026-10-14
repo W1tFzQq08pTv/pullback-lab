@@ -1,3 +1,4 @@
+from .trading_rules import order_lot
 from .logging_setup import log
 """Versioned daily approximation of the public Martin Luk thread, not intraday replication."""
 import hashlib
@@ -56,13 +57,14 @@ class MartinBook(Book):
             if distance<=0 or distance/price>self.p.martin_max_stop:
                 self.rejected.append(dict(date=d,side='buy',reason='开盘跌破止损或止损距离超过上限'));self.pending=None;return
             budget=self.cash*self.p.martin_risk
-            qty=min(int(budget/distance/100)*100,int(self.cash*self.p.allocation/price/100)*100)
-            while qty>0:
+            minimum,step=order_lot(self.p.symbol)
+            qty=min(int(budget/distance/step)*step,int(self.cash*self.p.allocation/price/step)*step)
+            while qty>=minimum:
                 costs=sum(fees(qty*price,d,False,self.p).values())+sum(fees(qty*self.stop,d,True,self.p).values())
                 if qty*distance+costs<=budget:break
-                qty-=100
-            if qty<=0:
-                self.rejected.append(dict(date=d,side='buy',reason='风险预算不足100股及双边预估费用'));self.pending=None;return
+                qty-=step
+            if qty<minimum:
+                self.rejected.append(dict(date=d,side='buy',reason=f'风险预算不足{minimum}股及双边预估费用'));self.pending=None;return
             spend=qty*price+sum(fees(qty*price,d,False,self.p).values())
             self.p=self.p.model_copy(update={'allocation':min(original.allocation,spend/self.cash+1e-10)})
         before=len(self.trades)
@@ -80,7 +82,9 @@ class MartinBook(Book):
         if not e or self.entry is None:return
         factor=e.get('reference_factor',1+e.get('bonus',0)+e.get('transfer',0));cash=e.get('reference_cash',e.get('cash',0))
         self.entry=(self.entry-cash)/factor;self.stop=(self.stop-cash)/factor;self.unit_risk/=factor;self.initial_shares*=1+e.get('bonus',0)+e.get('transfer',0)
-        if self.sell_quantity is not None:self.sell_quantity=max(100,int(self.sell_quantity*(1+e.get('bonus',0)+e.get('transfer',0))/100)*100)
+        if self.sell_quantity is not None:
+            minimum,step=order_lot(self.p.symbol)
+            self.sell_quantity=max(minimum,int(self.sell_quantity*(1+e.get('bonus',0)+e.get('transfer',0))/step)*step)
 
     def schedule(self,s):
         if self.shares:
@@ -91,7 +95,8 @@ class MartinBook(Book):
                 reached=2 if s['close']>=self.entry+5*self.unit_risk else 1 if s['close']>=self.entry+3*self.unit_risk else 0
                 if reached>self.stage:
                     # Below 300 shares, sell a minimum lot; never create an untradeable partial order.
-                    one=max(100,int(self.initial_shares/3/100)*100)
+                    minimum,step=order_lot(self.p.symbol)
+                    one=max(minimum,int(self.initial_shares/3/step)*step)
                     self.sell_quantity=min(self.shares,one*(reached-self.stage));self.pending_stage=reached
                     self.pending='sell';self.reason='5R分批止盈' if reached==2 else '3R分批止盈'
         elif s['buy']:

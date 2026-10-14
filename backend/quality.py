@@ -1,4 +1,4 @@
-from .trading_rules import limit_ratio,supported
+from .trading_rules import limit_ratio,supported,board
 import math
 from collections import Counter
 
@@ -31,7 +31,7 @@ def validate(payload):
                 problems.append(issue('zero_volume',d,'零成交量日线需核实停牌，不能认定为有效交易日',symbol))
             if d not in cal:
                 problems.append(issue('calendar',d,'行情日期不在交易日历内',symbol))
-            if prev and key=='bars':
+            if prev and key=='bars' and board(symbol) is not None:
                 e=events.get(d,{})
                 reference=(prev['close']-e.get('reference_cash',e.get('cash',0)))/(e.get('reference_factor',1+e.get('bonus',0)+e.get('transfer',0)))
                 if abs(r['close']/reference-1) > limit_ratio(symbol,d)+.005:
@@ -48,11 +48,22 @@ def validate(payload):
         if problem['symbol']=='002028.SZ':problem['symbol']=payload.get('symbol','002028.SZ')
     return problems
 
+def warmup_required(p):
+    """Completed sessions reserved before evaluation; no arbitrary annual floor."""
+    needs=[1]
+    if 'trend_pullback' in p.strategies:
+        needs.append(max(p.slow,p.middle+p.slope,p.middle+p.pullback-1,2)-1)
+    if 'martin_daily' in p.strategies:
+        # 126-day return and the anchor both need prior sessions. EMA50's
+        # initial observation weight after 126 updates is below 0.7%.
+        needs.append(max(126,p.martin_anchor_window))
+    return max(needs)
+
 def eligible(payload, p):
     start,end=str(p.start),str(p.end)
     symbol=payload.get('symbol','002028.SZ')
     if p.symbol!=symbol:return [issue('symbol',None,'标的与快照不一致，请重新选择数据',p.symbol)]
-    required=max(250,p.slow+p.slope,p.middle+p.slope+p.pullback)
+    required=warmup_required(p)
     before=[r for r in payload['bars'] if r['date']<start and r['volume']>0]
     lower=before[-required]['date'] if len(before)>=required else payload['start']
     problems=[i for i in validate(payload) if i['severity']=='error' and (i['date'] is None or lower<=i['date']<=end) and (p.market_filter or i['symbol']!='000300.SH')]
@@ -61,7 +72,7 @@ def eligible(payload, p):
         if not supported(symbol,stock.get('name','')):
             problems.append(issue('trading_rules',None,'该标的的板块或风险警示交易规则尚未支持；行情可缓存查看，正式回测已阻止',symbol))
     if len(before)<required:
-        problems.append(issue('warmup',start,f'预热需要{required}根有效日线，实际{len(before)}根'))
+        problems.append(issue('warmup',start,f'行情不足：截至 {end} 已有 {sum(r["volume"]>0 and r["date"]<=end for r in payload["bars"])} 条有效日线；当前策略至少需要 {required+1} 条（预热 {required} 条，回测至少 1 条）。可继续查看行情，补足后重试'))
     if start<payload['start'] or end>payload['end']:
         problems.append(issue('range',end,'请求日期超出已保存且收盘的覆盖区间'))
     if not any(start<=r['date']<=end for r in payload['bars']):

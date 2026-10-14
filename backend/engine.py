@@ -1,4 +1,4 @@
-from .trading_rules import limit_ratio
+from .trading_rules import limit_ratio,order_lot
 """Deterministic daily event engine: signals at close, execution next session."""
 import hashlib
 from datetime import date, timedelta
@@ -123,12 +123,13 @@ class Book:
         else:price=0.
         if not why and side=='buy':
             budget=min(self.cash,self.cash*self.p.allocation)
-            qty=int(budget/price/100)*100
-            while qty>0:
+            minimum,step=order_lot(self.p.symbol)
+            qty=int(budget/price/step)*step
+            while qty>=minimum:
                 fs=fees(qty*price,d,False,self.p)
                 if qty*price+sum(fs.values())<=budget:break
-                qty-=100
-            if qty==0:why='资金不足100股及费用'
+                qty-=step
+            if qty<minimum:why=f'资金不足{minimum}股及费用'
         if why:
             self.rejected.append(dict(date=d,side=side,reason=why))
             if side=='buy':self.pending=None
@@ -141,6 +142,9 @@ class Book:
             tax=0.
         else:
             qty=min(self.shares,self.sell_quantity) if self.sell_quantity is not None else self.shares
+            minimum,step=order_lot(self.p.symbol)
+            if qty<self.shares and qty<minimum:
+                self.rejected.append(dict(date=d,side=side,reason=f'分批卖出不足{minimum}股'));self.pending=None;return
             if qty<=0:
                 self.pending=None;self.sell_quantity=None;return
             cost=money(qty*price);fs=fees(cost,d,True,self.p)
