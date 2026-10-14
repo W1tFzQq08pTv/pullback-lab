@@ -1,3 +1,4 @@
+from .trading_rules import limit_ratio
 """Deterministic daily event engine: signals at close, execution next session."""
 import hashlib
 from datetime import date, timedelta
@@ -5,7 +6,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from dateutil.relativedelta import relativedelta
 from . import store
 
-VERSION='1.0.2'
+VERSION='1.1.0'
 
 def money(x):
     return float(Decimal(str(x)).quantize(Decimal('.01'),rounding=ROUND_HALF_UP))
@@ -37,7 +38,7 @@ def indicators(payload,p,explain=False):
         e=actions.get(d)
         if e:
             # Re-express only past observations in today's price basis. No future adjustment.
-            factor=1+e.get('bonus',0)+e.get('transfer',0)
+            factor=e.get('reference_factor',1+e.get('bonus',0)+e.get('transfer',0))
             for h in history:
                 for k in ('open','high','low','close'):
                     h[k]=(h[k]-e.get('reference_cash',e['cash']))/factor
@@ -64,7 +65,7 @@ def indicators(payload,p,explain=False):
 class Book:
     def __init__(self,p):
         self.p=p; self.cash=p.capital; self.lots=[]; self.entitlements=[]; self.ledger=[]; self.trades=[]; self.rejected=[]; self.curve=[]
-        self.pending=None; self.total_fees=0.; self.tax=0.; self.cycles=[]; self.entry_equity=None
+        self.sell_quantity=None; self.pending=None; self.total_fees=0.; self.tax=0.; self.cycles=[]; self.entry_equity=None
 
     @property
     def shares(self): return sum(l['shares'] for l in self.lots)
@@ -113,7 +114,8 @@ class Book:
         if not r or r['volume']<=0: why='停牌或无可交易行情'
         if side=='sell' and (any(l['available']>d for l in self.lots) or any(e['recognized'] and e['new_shares'] and not e.get('credited') for e in self.entitlements)):why='T+1或送转股份尚未上市'
         if r and reference:
-            upper,lower=money(reference*1.1),money(reference*.9)
+            limit=limit_ratio(self.p.symbol,d)
+            upper,lower=money(reference*(1+limit)),money(reference*(1-limit))
             if side=='buy' and r['open']>=upper:why='开盘涨停，保守模型不买入'
             if side=='sell' and r['open']<=lower:why='开盘跌停，卖单保留'
             price=money(Decimal(str(r['open']))*(Decimal(1)+Decimal(str(self.p.slippage_bps))/Decimal(10000)*(1 if side=='buy' else -1)))
@@ -138,17 +140,28 @@ class Book:
             self.lots.append(dict(shares=qty,acquired=d,available=(date.fromisoformat(d)+timedelta(days=1)).isoformat(),dividends=[]))
             tax=0.
         else:
-            qty=self.shares; cost=money(qty*price);fs=fees(cost,d,True,self.p)
-            tax=money(sum(v['base']*dividend_rate(l['acquired'],d) for l in self.lots for v in l['dividends']))
+            qty=min(self.shares,self.sell_quantity) if self.sell_quantity is not None else self.shares
+            if qty<=0:
+                self.pending=None;self.sell_quantity=None;return
+            cost=money(qty*price);fs=fees(cost,d,True,self.p)
+            remaining=qty; tax_base=0.; kept=[]
+            for lot in self.lots:
+                take=min(remaining,lot['shares']); fraction=take/lot['shares']
+                tax_base+=sum(v['base']*fraction*dividend_rate(lot['acquired'],d) for v in lot['dividends'])
+                remaining-=take
+                if take<lot['shares']:
+                    kept.append({**lot,'shares':lot['shares']-take,'dividends':[{**v,'base':v['base']*(1-fraction)} for v in lot['dividends']]})
+            tax=money(tax_base)
             charge=money(sum(fs.values()))
-            self.cash=money(self.cash+cost-charge-tax);self.lots=[];self.tax+=tax
+            self.cash=money(self.cash+cost-charge-tax);self.lots=kept;self.tax+=tax
             unsettled=sum(e['gross'] for e in self.entitlements if not e['paid'])
-            self.cycles.append(money(self.cash+unsettled-self.entry_equity))
-            self.entry_equity=None
+            if not self.shares:
+                self.cycles.append(money(self.cash+unsettled-self.entry_equity))
+                self.entry_equity=None
         self.total_fees+=charge
         self.trades.append(dict(date=d,side=side,price=price,shares=qty,amount=cost,**fs,dividend_tax=tax,cash=self.cash))
         self.log(d,'买入' if side=='buy' else '卖出',-cost-charge if side=='buy' else cost-charge-tax,qty)
-        self.pending=None
+        self.pending=None;self.sell_quantity=None
 
     def metrics(self):
         equity=[x['equity'] for x in self.curve]
@@ -176,7 +189,7 @@ def backtest(payload,p):
     for d in dates:
         r=bars.get(d)
         e=actions.get(d,{})
-        reference=(price-e.get('reference_cash',e.get('cash',0)))/(1+e.get('bonus',0)+e.get('transfer',0))
+        reference=(price-e.get('reference_cash',e.get('cash',0)))/(e.get('reference_factor',1+e.get('bonus',0)+e.get('transfer',0)))
         price=reference
         for ix,b in enumerate(books):
             b.process_actions(d)

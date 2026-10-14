@@ -1,3 +1,4 @@
+from .logging_setup import log
 """Bounded, evidence-backed gap repair. Never insert synthetic suspension candles."""
 import copy
 import json
@@ -13,7 +14,8 @@ REPAIRABLE=GAPS|{'action_unverified','action_dates','share_dates'}
 def recent_attempt(snapshot_id,max_age=21600):
     with store.connect() as db:row=db.execute('SELECT * FROM repair_attempts WHERE snapshot_id=?',(snapshot_id,)).fetchone()
     if row and (max_age is None or (datetime.now(timezone.utc)-datetime.fromisoformat(row['attempted'])).total_seconds()<max_age):
-        return json.loads(row['result'])
+        result=json.loads(row['result'])
+        if result.get('revision')==2:return result
     return None
 
 def valid(row):
@@ -23,8 +25,10 @@ def valid(row):
     except (KeyError,TypeError):return False
 
 def repair_snapshot(snapshot,progress=lambda n,m:None,force=False):
+    log.info('repair begin snapshot=%s force=%s',snapshot['id'],force)
     prior=recent_attempt(snapshot['id'])
     if prior and not force:
+        log.info('repair cache hit snapshot=%s result=%s',snapshot['id'],store.dumps(prior))
         return store.latest(prior['snapshot_id']) or snapshot,{**prior,'cached':True}
     payload=copy.deepcopy(snapshot['payload']);symbol=payload.get('symbol','002028.SZ')
     stock=payload.get('stock')
@@ -33,11 +37,22 @@ def repair_snapshot(snapshot,progress=lambda n,m:None,force=False):
         stock=get_stock(symbol)
     original=validate(payload)
     targets=[i for i in original if i['code'] in GAPS and i['severity']=='error']
-    report=dict(original_snapshot=snapshot['id'],snapshot_id=snapshot['id'],symbol=symbol,attempted=store.now(),requested=len(targets),filled=[],suspensions=[],failures=[],remaining=0,cached=False)
-    feed=Feed(stock,force=True)
+    report=dict(revision=2,original_snapshot=snapshot['id'],snapshot_id=snapshot['id'],symbol=symbol,attempted=store.now(),requested=len(targets),filled=[],suspensions=[],failures=[],remaining=0,cached=False)
+    feed=Feed(stock,force=force)
     try:
+        remaining=[i['date'] for i in validate(payload) if i['symbol']==symbol and i['code'] in GAPS]
+        if remaining:
+            progress(8,f'正在核验 {len(remaining)} 个缺失日期的停复牌公告')
+            try:
+                confirmed,evidence=verify_suspensions(feed,remaining,bars=payload['bars'])
+                payload['suspensions']=sorted(set(payload.get('suspensions',[]))|set(confirmed))
+                known={e['source'] for e in payload.get('suspension_evidence',[])}
+                payload.setdefault('suspension_evidence',[]).extend(e for e in evidence if e['source'] not in known)
+                report['suspensions']=confirmed
+                report['evidence']=evidence
+            except Exception as exc:report['failures'].append(dict(stage='announcements',symbol=symbol,message=str(exc)))
         for key,code in [('bars',symbol),('index','000300.SH')]:
-            dates={i['date'] for i in targets if i['symbol']==code}
+            dates={i['date'] for i in targets if i['symbol']==code and not (key=='bars' and i['date'] in payload.get('suspensions',[]))}
             if not dates:continue
             feed_symbol=code[-2:].lower()+code[:6]
             progress(15,f'自动修复 {code}：重新检查 {len(dates)} 个缺失交易日')
@@ -71,17 +86,6 @@ def repair_snapshot(snapshot,progress=lambda n,m:None,force=False):
             report['failures'].extend(dict(stage=i['code'],symbol=code,date=i['date'],message=i['message']) for i in extra_issues)
             report['filled'].extend(dict(symbol=code,date=r['date'],source=r['source']) for r in payload[key] if r['date'] in remaining_dates-before and valid(r))
             payload[key].sort(key=lambda r:r['date'])
-        remaining=[i['date'] for i in validate(payload) if i['symbol']==symbol and i['code'] in GAPS]
-        if remaining:
-            progress(65,f'正在核验 {len(remaining)} 个缺失日期的停复牌公告')
-            try:
-                confirmed,evidence=verify_suspensions(feed,remaining,bars=payload['bars'])
-                payload['suspensions']=sorted(set(payload.get('suspensions',[]))|set(confirmed))
-                known={e['source'] for e in payload.get('suspension_evidence',[])}
-                payload.setdefault('suspension_evidence',[]).extend(e for e in evidence if e['source'] not in known)
-                report['suspensions']=confirmed
-                report['evidence']=evidence
-            except Exception as exc:report['failures'].append(dict(stage='announcements',symbol=symbol,message=str(exc)))
         if any(i['code'] in REPAIRABLE-GAPS for i in original):
             progress(80,'重新查询分红送转实施公告；证据不足的事件保留阻断')
             try:payload['actions']=feed.verify_actions(payload['actions'])
@@ -91,11 +95,12 @@ def repair_snapshot(snapshot,progress=lambda n,m:None,force=False):
         payload['quality']=validate(payload)
         report['remaining']=sum(i['code'] in GAPS and i['severity']=='error' for i in payload['quality'])
         report['other_errors']=sum(i['code'] not in GAPS and i['severity']=='error' for i in payload['quality'])
-        if report['filled'] or report['suspensions'] or payload['actions']!=snapshot['payload']['actions'] or payload.get('source_issues')!=snapshot['payload'].get('source_issues'):
+        if report['filled'] or report['suspensions'] or payload['actions']!=snapshot['payload']['actions'] or payload.get('source_issues')!=snapshot['payload'].get('source_issues') or payload['quality']!=snapshot['payload'].get('quality'):
             report['snapshot_id']=store.snapshot(payload)
         with store.connect() as db:
             for ident in {snapshot['id'],report['snapshot_id']}:
                 db.execute('INSERT OR REPLACE INTO repair_attempts VALUES(?,?,?)',(ident,store.now(),store.dumps(report)))
         progress(90,f'补回 {len(report["filled"])} 根行情，确认 {len(report["suspensions"])} 个停牌日，剩余 {report["remaining"]} 个缺口')
+        log.info('repair completed symbol=%s result=%s',symbol,store.dumps(report))
         return store.latest(report['snapshot_id']),report
     finally:feed.close()

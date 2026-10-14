@@ -1,3 +1,4 @@
+from .trading_rules import limit_ratio,supported
 import math
 from collections import Counter
 
@@ -32,9 +33,9 @@ def validate(payload):
                 problems.append(issue('calendar',d,'行情日期不在交易日历内',symbol))
             if prev and key=='bars':
                 e=events.get(d,{})
-                reference=(prev['close']-e.get('reference_cash',e.get('cash',0)))/(1+e.get('bonus',0)+e.get('transfer',0))
-                if abs(r['close']/reference-1) > .105:
-                    problems.append(issue('price_jump',d,'超过主板通常涨跌幅，需核实公司行动或行情',symbol))
+                reference=(prev['close']-e.get('reference_cash',e.get('cash',0)))/(e.get('reference_factor',1+e.get('bonus',0)+e.get('transfer',0)))
+                if abs(r['close']/reference-1) > limit_ratio(symbol,d)+.005:
+                    problems.append(issue('price_jump',d,'超过该板块当日通常涨跌幅，需核实公司行动或行情',symbol))
             prev=r
     for e in payload['actions']:
         if not e.get('verified'):
@@ -54,10 +55,10 @@ def eligible(payload, p):
     required=max(250,p.slow+p.slope,p.middle+p.slope+p.pullback)
     before=[r for r in payload['bars'] if r['date']<start and r['volume']>0]
     lower=before[-required]['date'] if len(before)>=required else payload['start']
-    problems=[i for i in payload['quality'] if i['severity']=='error' and (i['date'] is None or lower<=i['date']<=end) and (p.market_filter or i['symbol']!='000300.SH')]
+    problems=[i for i in validate(payload) if i['severity']=='error' and (i['date'] is None or lower<=i['date']<=end) and (p.market_filter or i['symbol']!='000300.SH')]
     if symbol != '002028.SZ':
         stock=payload.get('stock',{})
-        if not symbol.startswith(('000','001','002','003','600','601','603','605')) or 'ST' in stock.get('name','').upper() or '退' in stock.get('name',''):
+        if not supported(symbol,stock.get('name','')):
             problems.append(issue('trading_rules',None,'该标的的板块或风险警示交易规则尚未支持；行情可缓存查看，正式回测已阻止',symbol))
     if len(before)<required:
         problems.append(issue('warmup',start,f'预热需要{required}根有效日线，实际{len(before)}根'))

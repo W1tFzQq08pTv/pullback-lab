@@ -1,8 +1,18 @@
 from datetime import date
+from typing import Literal
 from pydantic import BaseModel, Field, model_validator
 
 class Parameters(BaseModel):
+    strategies: list[Literal['trend_pullback','martin_daily']] = Field(default_factory=lambda:['trend_pullback'], min_length=1,max_length=2)
+    martin_risk: float = Field(.005,gt=0,le=.05)
+    martin_max_stop: float = Field(.03,gt=0,le=.1)
+    martin_min_return: float = Field(.3,ge=0,le=3)
+    martin_min_turnover: float = Field(20000000,ge=0,le=1e11)
+    martin_support_tolerance: float = Field(.015,ge=0,le=.05)
+    martin_anchor_window: int = Field(63,ge=21,le=126)
+    martin_pool_id: str | None = None
     symbol: str = Field("002028.SZ", pattern=r"^\d{6}\.(SZ|SH|BJ)$")
+    time_range: Literal['all','custom'] = 'custom'
     start: date = date(2016, 10, 12)
     end: date = date(2026, 10, 9)
     fast: int = Field(20, ge=2, le=120)
@@ -22,6 +32,8 @@ class Parameters(BaseModel):
 
     @model_validator(mode='after')
     def validate_order(self):
+        if len(set(self.strategies))!=len(self.strategies):
+            raise ValueError('策略不能重复选择')
         if self.start > self.end:
             raise ValueError('开始日期不能晚于结束日期')
         if not self.fast < self.middle < self.slow:

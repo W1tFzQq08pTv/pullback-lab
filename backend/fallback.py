@@ -16,7 +16,17 @@ def slice_payload(payload,after):
     data['quality']=validate(data)
     return data
 
+def resolve_range(payload,p):
+    """All means all cached backtestable sessions, reserving indicator warmup."""
+    if p.time_range!='all':return p
+    required=max(250,p.slow+p.slope,p.middle+p.slope+p.pullback)
+    rows=[r for r in payload['bars'] if r['volume']>0 and r['date']<=payload['end']]
+    first=rows[required]['date'] if len(rows)>required else payload['start']
+    return p.model_copy(update={'start':date.fromisoformat(max('2016-01-01',first)),
+        'end':date.fromisoformat(payload['end']),'data_after':None})
+
 def prepare(payload,p):
+    p=resolve_range(payload,p)
     if p.data_after:
         data=slice_payload(payload,p.data_after)
         note=dict(requested_start=str(p.start),actual_start=str(p.start),end=str(p.end),excluded_through=p.data_after,data_start=data['start'],warmup=max(250,p.slow+p.slope,p.middle+p.slope+p.pullback),issues=[])

@@ -1,3 +1,4 @@
+from .logging_setup import log
 from datetime import date
 from .sources import Feed, cutoff_date, verify_suspensions
 from .quality import validate, issue
@@ -5,12 +6,16 @@ from . import store
 
 def synchronize(task_id, stock=None, force=False):
     stock=stock or dict(symbol="002028.SZ",code="002028",name="思源电气",org_id="gssz0002028")
+    log.info('sync begin task=%s symbol=%s force=%s',task_id,stock['symbol'],force)
     feed=Feed(stock,force)
-    def update(n,msg): store.task_update(task_id,progress=n,message=msg)
+    def update(n,msg):
+        log.info('sync stage task=%s symbol=%s progress=%s message=%s',task_id,stock['symbol'],n,msg)
+        store.task_update(task_id,progress=n,message=msg)
     try:
         cutoff=cutoff_date()
         previous=store.latest(symbol=stock['symbol'])
         if previous and previous['payload'].get('cutoff')==cutoff and not force and not any(i['severity']=='error' for i in previous['payload'].get('quality', [])):
+            log.info('sync cache hit task=%s symbol=%s snapshot=%s cutoff=%s bars=%s',task_id,stock['symbol'],previous['id'],cutoff,len(previous['payload']['bars']))
             store.task_update(task_id,'completed',100,'当前已收盘区间已缓存，无需重复下载',dict(snapshot_id=previous['id'],cached=True,symbol=stock['symbol']))
             return
         # Refresh current market feeds, including a pre-close cached response.
@@ -71,15 +76,25 @@ def synchronize(task_id, stock=None, force=False):
             present={r['date'] for r in result[key]}
             result[key].extend(r for r in cached_rows if start<=r['date']<=end and r['date'] not in present)
             needed={d for d in calendar if key=='index' or d>=result.get('listed',start)}-{r['date'] for r in result[key] if r['volume']>0}
+            if key=='bars' and needed:
+                update(68,'优先核验停复牌公告，减少无效行情补数')
+                try:
+                    result['suspensions'],result['suspension_evidence']=verify_suspensions(feed,sorted(needed),bars=result['bars'])
+                    needed-=set(result['suspensions'])
+                except Exception as exc:
+                    result['source_issues'].append(issue('suspension_source',None,str(exc),stock['symbol'],'warning'))
             if needed:update(70,f'{symbol}：尝试东方财富 / BaoStock 补齐 {len(needed)} 个缺口')
             result[key],extra_issues,reports=supplement(feed,symbol,result[key],needed)
             result['source_issues'].extend(extra_issues)
             result.setdefault('source_reports',[]).extend(reports)
         missing=sorted({d for d in calendar if d>=result.get('listed',start)}-{r['date'] for r in result['bars'] if r['volume']>0})
+        missing=sorted(set(missing)-set(result['suspensions']))
         if missing:
             update(73,'查询缺失日期的停复牌公告证据')
             try:
-                result['suspensions'],result['suspension_evidence']=verify_suspensions(feed,missing,bars=result['bars'])
+                confirmed,evidence=verify_suspensions(feed,missing,bars=result['bars'])
+                result['suspensions']=sorted(set(result['suspensions'])|set(confirmed))
+                result.setdefault('suspension_evidence',[]).extend(evidence)
             except Exception as exc:
                 result['source_issues'].append(issue('suspension_source',None,f'停复牌证据获取失败，缺口保持未确认：{exc}',severity='warning'))
         update(76,'核验分红及巨潮资讯实施公告')
@@ -92,11 +107,13 @@ def synchronize(task_id, stock=None, force=False):
         update(94,'检查数据完整性并保存快照')
         result['quality']=validate(result)
         ident=store.snapshot(result)
+        log.info('sync saved task=%s symbol=%s snapshot=%s bars=%s index=%s actions=%s source_issues=%s',task_id,stock['symbol'],ident,len(result['bars']),len(result['index']),len(result['actions']),store.dumps(result['source_issues']))
         errors=sum(i['severity']=='error' for i in result['quality'])
         latest=min((max((r['date'] for r in result[key]),default='') for key in ('bars','index')))
         suffix=f'；行情源尚未补齐 {end}，请稍后重试' if latest<end else ''
         store.task_update(task_id,'completed',100,f'已保存 {len(result["bars"])} 根日线；{errors} 项待核验{suffix}',dict(snapshot_id=ident,errors=errors,symbol=stock['symbol']))
     except Exception as exc:
+        log.exception('sync failed task=%s symbol=%s',task_id,stock['symbol'])
         store.task_update(task_id,'failed',message=str(exc))
     finally:
         feed.close()

@@ -3,12 +3,16 @@ import io
 import json
 import re
 import time
+import threading
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 import httpx
 from bs4 import BeautifulSoup
 from pypdf import PdfReader
 from . import store
+
+# MiniRacer initializes a process-wide V8 runtime; serialize first use and decode.
+SINA_DECODE_LOCK = threading.Lock()
 
 HEADERS = {'User-Agent': 'Mozilla/5.0', 'Referer': 'https://finance.sina.com.cn/'}
 
@@ -24,7 +28,7 @@ class Feed:
     def get(self, url, *, immutable=False, form=None, ttl=21600, offline=False):
         key = url + ('#' + store.dumps(form) if form else '')
         prior = store.cached(key)
-        if prior and not self.force and (datetime.now(timezone.utc)-datetime.fromisoformat(prior[1]['fetched'])).total_seconds() < (315360000 if immutable else ttl):
+        if prior and (immutable or not self.force) and (datetime.now(timezone.utc)-datetime.fromisoformat(prior[1]['fetched'])).total_seconds() < (315360000 if immutable else ttl):
             self.evidence[key] = prior[1]['digest']
             return prior[0]
         error = None
@@ -49,13 +53,14 @@ class Feed:
         raise RuntimeError(f'公开接口获取失败 {url}: {error}')
 
     def sina_decoded(self, url):
-        import py_mini_racer
-        from akshare.stock.cons import hk_js_decode
         body = self.get(url, ttl=0 if self.fresh_market else 21600).decode()
         encoded = body.split('=', 1)[1].split(';')[0].strip().strip('"')
-        with py_mini_racer.MiniRacer() as ctx:
-            ctx.eval(hk_js_decode)
-            return ctx.call('d', encoded)
+        with SINA_DECODE_LOCK:
+            import py_mini_racer
+            from akshare.stock.cons import hk_js_decode
+            with py_mini_racer.MiniRacer() as ctx:
+                ctx.eval(hk_js_decode)
+                return ctx.call('d', encoded)
 
     def calendar(self):
         rows = self.sina_decoded('https://finance.sina.com.cn/realstock/company/klc_td_sh.txt')
@@ -111,10 +116,15 @@ class Feed:
 
     def announcements(self):
         form = dict(pageNum='1', pageSize='30', column='sse' if self.stock['symbol'].endswith('.SH') else 'szse', tabName='fulltext', stock=self.stock['code']+','+self.stock['org_id'], searchkey='权益分派实施', seDate='2015-01-01~'+datetime.now(ZoneInfo('Asia/Shanghai')).date().isoformat())
-        result = json.loads(self.get('https://www.cninfo.com.cn/new/hisAnnouncement/query', form=form))
-        if result.get('totalAnnouncement', 0) > 30:
-            raise ValueError('实施公告超过单页，需要补齐分页后才能核验')
-        return result.get('announcements') or []
+        rows=[]
+        for page in range(1,21):
+            form['pageNum']=str(page)
+            result=json.loads(self.get('https://www.cninfo.com.cn/new/hisAnnouncement/query',form=form))
+            batch=result.get('announcements') or []
+            rows.extend(batch)
+            if page*30>=result.get('totalAnnouncement',0):return rows
+            if not batch:break
+        raise ValueError('实施公告分页不完整，保留未核实事件')
 
     def verify_actions(self, events):
         announcements = self.announcements()
@@ -156,7 +166,12 @@ class Feed:
                     e['verified'] = False
                     e['review_reason'] = '送转事件需确认股份到账日、上市日与税务属性'
                     credited = date_after(r'所送（转）股于')
-                    available = date_after(r'无限售流通股的起始交易日为')
+                    available = date_after(r'(?:无限售(?:条件)?流通股的起始交易日为|新增无限售条件流通股上市日为[：:]?)')
+                    from .action_tables import transfer_terms
+                    terms=transfer_terms(text,e)
+                    if credited and available and terms and ex<=credited<=available:
+                        e.update(terms,verified=True,share_date=available,credit_date=credited,transfer_taxable=False)
+                        e.pop('review_reason',None)
                     # This exact issuer announcement explicitly taxes only cash (0.4/0.2 per ten).
                     if self.stock['symbol']=='002028.SZ' and ex == '2016-04-25' and e['bonus'] == 0 and e['transfer'] == .2 and credited and available and '每10股补缴税款0.400000元' in text:
                         e.update(verified=True, share_date=available, credit_date=credited, transfer_taxable=False)
@@ -175,7 +190,7 @@ def explicit_suspension_dates(text):
     """Accept one explicit initial suspension and one distinct resumption; ignore continuations."""
     text=re.sub(r'\s+','',text)
     date_pattern=r'(20\d{2})年(\d{1,2})月(\d{1,2})日'
-    suffix=r'(?:[（(](?:星期|周)[一二三四五六日天][）)])?(?:开市|开盘)?(?:时)?(?:起|开始)?'
+    suffix=r'(?:[（(](?:星期|周)[一二三四五六日天][）)])?(?:上午|下午)?(?:开市|开盘)?(?:时)?(?:起|开始)?'
     def find(action):
         matches=re.finditer(r'(?:自|于)'+date_pattern+suffix+action,text)
         values=set()
@@ -224,17 +239,17 @@ def verify_suspensions(feed, missing, bars=None):
                 if page>=10 or not announcements:raise ValueError('停复牌公告分页不完整，保留未知缺口')
                 page+=1
         # A pair can come from one announcement or separate stop/resume announcements.
-        starts={d for a in cluster_docs for d in a['starts'] if d<=cluster[0]}
-        resumes={d for a in cluster_docs for d in a['resumes'] if d>cluster[-1]}
-        if len(starts)!=1 or len(resumes)!=1:continue
-        start,resume=next(iter(starts)),next(iter(resumes))
-        if bars is not None:
-            traded={r['date'] for r in bars if r.get('volume',0)>0}
-            if resume not in traded or any(start<=d<resume for d in traded):continue
-        stop_doc=next(a for a in cluster_docs if start in a['starts'])
-        resume_doc=next(a for a in cluster_docs if resume in a['resumes'])
-        matched=[d for d in dates if start<=d<resume]
-        if matched:
-            confirmed.update(matched)
-            evidence.append(dict(start=start,resume=resume,dates=matched,source=resume_doc['source'],start_source=stop_doc['source'],title=resume_doc['title'],digest=resume_doc['digest'],start_digest=stop_doc['digest']))
+        starts=sorted({d for a in cluster_docs for d in a['starts']})
+        resumes=sorted({d for a in cluster_docs for d in a['resumes']})
+        traded={r['date'] for r in (bars or []) if r.get('volume',0)>0}
+        for start in starts:
+            resume=next((d for d in resumes if d>start),None)
+            if not resume:continue
+            if bars is not None and (resume not in traded or any(start<=d<resume for d in traded)):continue
+            stop_doc=next(a for a in cluster_docs if start in a['starts'])
+            resume_doc=next(a for a in cluster_docs if resume in a['resumes'])
+            matched=[d for d in dates if start<=d<resume and d not in confirmed]
+            if matched:
+                confirmed.update(matched)
+                evidence.append(dict(start=start,resume=resume,dates=matched,source=resume_doc['source'],start_source=stop_doc['source'],title=resume_doc['title'],digest=resume_doc['digest'],start_digest=stop_doc['digest']))
     return sorted(confirmed),evidence
