@@ -4,4 +4,5 @@ import App from './App';
 import './style.css';
 import './workspace.css';
 import './studio.css';
+import './mobile.css';
 ReactDOM.createRoot(document.getElementById('root')!).render(<><App/><ToastHost/></>);
