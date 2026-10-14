@@ -1,0 +1,27 @@
+{
+  "601138.SH": {
+    "revision": "97474107629fd10d",
+    "params": {
+      "martin_anchor_window": 126,
+      "martin_max_stop": 0.05,
+      "martin_min_return": 0.1,
+      "martin_min_turnover": 0,
+      "martin_risk": 0.05,
+      "martin_support_tolerance": 0.005,
+      "fast": 15,
+      "market_filter": false,
+      "middle": 50,
+      "pullback": 20,
+      "slope": 1,
+      "slow": 100
+    },
+    "range": {
+      "end": "2026-10-12",
+      "start": "2019-06-20"
+    },
+    "snapshot_id": "40165ccf208974906847",
+    "objective": "total_return",
+    "candidates": 43040,
+    "note": "工业富联样本内累计收益优先；Martin 单笔风险预算 5%，历史最大回撤 25.05%。仅为已搜索网格最优，未做样本外验证。"
+  }
+}
