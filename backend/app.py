@@ -10,11 +10,11 @@ from datetime import date
 from ipaddress import ip_address
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import Response, JSONResponse
-from . import store, task_scheduler
+from . import store, task_scheduler, batch_cache
 from .logging_setup import configure, log
 from . import optimization_profiles, workflow_runner
 from .workflow import present
-from .models import Parameters, SyncRequest
+from .models import Parameters, SyncRequest, CacheBatchRequest
 from .stocks import get_stock, search, normalize
 from .quality import eligible
 from .sync import synchronize
@@ -34,7 +34,9 @@ async def lifespan(app):
     from .pools import init as init_pools
     init_pools()
     task_scheduler.init()
+    batch_cache.init()
     yield
+    batch_cache.shutdown()
     workflow_runner.shutdown()
     task_scheduler.shutdown()
 app=FastAPI(title='回调研究室',lifespan=lifespan)
@@ -85,7 +87,7 @@ def overview(symbol:str="002028.SZ"):
 def sync(p:SyncRequest):
     try:stock=get_stock(p.symbol)
     except Exception as exc:raise HTTPException(400,str(exc))
-    return spawn('sync',lambda ident:synchronize(ident,stock,p.force),[p.symbol],p.model_dump(mode='json'))
+    return spawn('sync',lambda ident:synchronize(ident,stock,p.force),[stock['symbol']],{**p.model_dump(mode='json'),'symbol':stock['symbol']})
 
 @app.get('/api/stocks')
 def stocks(q:str=''):
@@ -121,6 +123,11 @@ def bars(snapshot_id:str|None=None,symbol:str="002028.SZ"):
     s=store.latest(snapshot_id,symbol=normalize(symbol))
     return s['payload']['bars'] if s else []
 
+@app.get('/api/adjustments')
+def adjustments(snapshot_id:str|None=None,symbol:str='002028.SZ'):
+    s=store.latest(snapshot_id,symbol=normalize(symbol))
+    return s['payload'].get('adjustments',dict(status='unavailable',message='尚未获取复权数据，请更新行情')) if s else dict(status='unavailable',message='暂无行情')
+
 @app.get('/api/indices')
 def indices():
     from .indices import INDICES
@@ -147,7 +154,7 @@ def repair(p:Parameters,force:bool=False):
     if s['payload'].get('symbol','002028.SZ')!=p.symbol:raise HTTPException(422,'股票与数据快照不一致')
     def work(ident):
         fixed,report=repair_snapshot(s,lambda n,m:store.task_update(ident,progress=n,message=m),force=force)
-        message=f'修复检查完成：补回{len(report["filled"])}根行情，确认{len(report["suspensions"])}个停牌日；仍有{report["remaining"]}个缺口、{report.get("other_errors",0)}项其他数据问题'
+        message=f'修复检查完成：补回{len(report["filled"])}条行情，确认{len(report["suspensions"])}个停牌日；仍有{report["remaining"]}个缺口、{report.get("other_errors",0)}项其他数据问题'
         store.task_update(ident,'completed',100,message,dict(snapshot_id=fixed['id'],repair=report))
     return spawn('repair',work,[p.symbol],dict(params=p.model_dump(mode='json'),force=force))
 
@@ -304,3 +311,36 @@ def export_experiment(ident:str):
     if rows:
         fields=list(dict.fromkeys(k for r in rows for k in r));writer=csv.DictWriter(stream,fieldnames=fields);writer.writeheader();writer.writerows(rows)
     return Response(stream.getvalue(),media_type='text/csv',headers={'Content-Disposition':f'attachment; filename="{ident}-diagnostics.csv"'})
+
+
+@app.post('/api/cache-batches/sample100')
+def cache_sample():
+    try:return dict(batch_id=batch_cache.create(batch_cache.sample100(),4))
+    except ValueError as exc:raise HTTPException(400,str(exc))
+
+@app.get('/api/cache-batches/{ident}')
+def cache_status(ident:str):
+    try:return batch_cache.status(ident)
+    except ValueError as exc:raise HTTPException(404,str(exc))
+
+@app.post('/api/cache-batches/{ident}/{action}')
+def cache_control(ident:str,action:str):
+    try:return batch_cache.control(ident,action)
+    except ValueError as exc:raise HTTPException(400,str(exc))
+
+
+@app.get('/api/cache-batches')
+def cache_batches():
+    with store.connect() as db:ids=[r['id'] for r in db.execute('SELECT id FROM cache_batches ORDER BY created DESC LIMIT 50')]
+    return [batch_cache.status(ident,details=False) for ident in ids]
+
+@app.post('/api/cache-batches')
+def cache_selected(p:CacheBatchRequest):
+    from .stocks import directory
+    rows=directory();lookup={s['symbol']:s for s in rows}
+    for s in rows:
+        for alias in s.get('aliases',[]):lookup[alias]=s
+    missing=[s for s in p.symbols if normalize(s) not in lookup]
+    if missing:raise HTTPException(400,'未找到证券：'+','.join(missing[:10]))
+    try:return dict(batch_id=batch_cache.create([lookup[normalize(s)] for s in p.symbols],p.concurrency))
+    except ValueError as exc:raise HTTPException(400,str(exc))

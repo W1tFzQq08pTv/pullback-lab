@@ -34,13 +34,18 @@ def fetch(feed, source, symbol, start, end):
         if raw.get('rc',0)!=0: raise ValueError('东方财富返回错误状态')
         rows=(raw.get('data') or {}).get('klines',[])
         return [dict(date=r[0],open=float(r[1]),close=float(r[2]),high=float(r[3]),low=float(r[4]),volume=float(r[5])*100,source=source) for r in (x.split(',') for x in rows)]
+    if feed.stock.get('asset_type')=='etf' or symbol.startswith('bj'):
+        raise ValueError(f'{source} 尚未确认此资产覆盖范围，未套用股票接口')
+    if feed.deadline and time.monotonic()>feed.deadline:raise TimeoutError('补数预算已用完')
     key=f'{source}://daily/{symbol}/{start}/{end}/unadjusted'
     # Only unresolved gaps reach this adapter; stale empty responses must not suppress retries.
     blob=None
     for attempt in range(3):
         try:
             if source=='baostock':
-                proc=subprocess.run([sys.executable,'-c',BAO_SCRIPT,symbol[:2]+'.'+symbol[2:],start,end],capture_output=True,timeout=20,check=True)
+                from .source_limits import request_slot
+                with request_slot('baostock://daily'):
+                    proc=subprocess.run([sys.executable,'-c',BAO_SCRIPT,symbol[:2]+'.'+symbol[2:],start,end],capture_output=True,timeout=8 if feed.deadline else 20,check=True)
                 blob=proc.stdout
                 json.loads(blob)
             else:

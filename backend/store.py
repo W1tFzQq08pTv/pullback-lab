@@ -1,4 +1,5 @@
 """SQLite persistence. Published snapshots and runs are immutable."""
+from contextlib import contextmanager
 import gzip
 import hashlib
 import json
@@ -18,11 +19,16 @@ def now():
 def dumps(value):
     return json.dumps(value, ensure_ascii=False, sort_keys=True, allow_nan=False)
 
+@contextmanager
 def connect():
     db = sqlite3.connect(DATA / 'lab.sqlite', timeout=30)
-    db.row_factory = sqlite3.Row
-    db.execute('PRAGMA journal_mode=WAL')
-    return db
+    try:
+        db.row_factory = sqlite3.Row
+        db.execute('PRAGMA journal_mode=WAL')
+        with db:
+            yield db
+    finally:
+        db.close()
 
 def init():
     with connect() as db:

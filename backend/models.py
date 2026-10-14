@@ -45,3 +45,8 @@ class Parameters(BaseModel):
 class SyncRequest(BaseModel):
     symbol: str = Field("002028.SZ", pattern=r"^\d{6}\.(SZ|SH|BJ)$")
     force: bool = False
+
+
+class CacheBatchRequest(BaseModel):
+    symbols: list[str] = Field(min_length=1,max_length=10000)
+    concurrency: int = Field(4,ge=1,le=4)

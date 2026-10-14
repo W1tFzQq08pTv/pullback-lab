@@ -15,7 +15,7 @@ def recent_attempt(snapshot_id,max_age=21600):
     with store.connect() as db:row=db.execute('SELECT * FROM repair_attempts WHERE snapshot_id=?',(snapshot_id,)).fetchone()
     if row and (max_age is None or (datetime.now(timezone.utc)-datetime.fromisoformat(row['attempted'])).total_seconds()<max_age):
         result=json.loads(row['result'])
-        if result.get('revision')==2:return result
+        if result.get('revision')==6:return result
     return None
 
 def valid(row):
@@ -37,7 +37,7 @@ def repair_snapshot(snapshot,progress=lambda n,m:None,force=False):
         stock=get_stock(symbol)
     original=validate(payload)
     targets=[i for i in original if i['code'] in GAPS and i['severity']=='error']
-    report=dict(revision=2,original_snapshot=snapshot['id'],snapshot_id=snapshot['id'],symbol=symbol,attempted=store.now(),requested=len(targets),filled=[],suspensions=[],failures=[],remaining=0,cached=False)
+    report=dict(revision=6,original_snapshot=snapshot['id'],snapshot_id=snapshot['id'],symbol=symbol,attempted=store.now(),requested=len(targets),filled=[],suspensions=[],failures=[],remaining=0,cached=False)
     feed=Feed(stock,force=force)
     try:
         remaining=[i['date'] for i in validate(payload) if i['symbol']==symbol and i['code'] in GAPS]
@@ -100,7 +100,7 @@ def repair_snapshot(snapshot,progress=lambda n,m:None,force=False):
         with store.connect() as db:
             for ident in {snapshot['id'],report['snapshot_id']}:
                 db.execute('INSERT OR REPLACE INTO repair_attempts VALUES(?,?,?)',(ident,store.now(),store.dumps(report)))
-        progress(90,f'补回 {len(report["filled"])} 根行情，确认 {len(report["suspensions"])} 个停牌日，剩余 {report["remaining"]} 个缺口')
+        progress(90,f'补回 {len(report["filled"])} 条行情，确认 {len(report["suspensions"])} 个停牌日，剩余 {report["remaining"]} 个缺口')
         log.info('repair completed symbol=%s result=%s',symbol,store.dumps(report))
         return store.latest(report['snapshot_id']),report
     finally:feed.close()

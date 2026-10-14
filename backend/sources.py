@@ -17,13 +17,14 @@ SINA_DECODE_LOCK = threading.Lock()
 HEADERS = {'User-Agent': 'Mozilla/5.0', 'Referer': 'https://finance.sina.com.cn/'}
 
 class Feed:
-    def __init__(self, stock=None, force=False):
+    def __init__(self, stock=None, force=False, budget_seconds=None):
         self.stock=stock or dict(symbol="002028.SZ",code="002028",name="思源电气",org_id="gssz0002028")
+        self.deadline=time.monotonic()+budget_seconds if budget_seconds else None
         self.force=force
         self.cached_fallbacks = set()
         self.fresh_market = False
         self.evidence = {}
-        self.client = httpx.Client(timeout=20, headers=HEADERS, follow_redirects=True)
+        self.client = httpx.Client(timeout=8 if budget_seconds else 20, headers=HEADERS, follow_redirects=True)
 
     def get(self, url, *, immutable=False, form=None, ttl=21600, offline=False):
         key = url + ('#' + store.dumps(form) if form else '')
@@ -32,11 +33,15 @@ class Feed:
             self.evidence[key] = prior[1]['digest']
             return prior[0]
         error = None
-        for attempt in range(3):
+        for attempt in range(2 if self.deadline else 3):
+            if self.deadline and time.monotonic()>self.deadline:
+                error=TimeoutError('本标的下载预算已用完，已缓存数据保留')
+                break
             try:
-                time.sleep(.15)
-                r = self.client.post(url, data=form, headers={'Referer':'https://www.cninfo.com.cn/'}) if form else self.client.get(url)
-                r.raise_for_status()
+                from .source_limits import request_slot
+                with request_slot(url):
+                    r = self.client.post(url, data=form, headers={'Referer':'https://www.cninfo.com.cn/'}) if form else self.client.get(url)
+                    r.raise_for_status()
                 if not r.content:
                     raise ValueError('上游返回空响应')
                 digest = store.archive(key, r.content)
@@ -67,7 +72,8 @@ class Feed:
         return sorted(set(str(d)[:10] for d in rows))
 
     def sina_bars(self, symbol):
-        rows = self.sina_decoded(f'https://finance.sina.com.cn/realstock/company/{symbol}/hisdata/klc_kl.js')
+        folder='hisdata_klc2' if self.stock.get('asset_type')=='etf' and symbol!='sh000300' else 'hisdata'
+        rows = self.sina_decoded(f'https://finance.sina.com.cn/realstock/company/{symbol}/{folder}/klc_kl.js')
         return [dict(date=str(r['date'])[:10], **{k: float(r[k]) for k in ('open','high','low','close','volume')}, source='sina') for r in rows]
 
     def tencent_bars(self, symbol, year, cutoff):
@@ -80,7 +86,16 @@ class Feed:
             raise ValueError(f'腾讯缺少 {symbol} {year} 日线字段')
         return [dict(date=r[0], open=float(r[1]), close=float(r[2]), high=float(r[3]), low=float(r[4]), volume=float(r[5])*100, source='tencent') for r in rows if r[0].startswith(str(year))]
 
+    def tencent_range(self, symbol, start, end):
+        url=f'https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={symbol},day,{start},{end},640,'
+        raw=json.loads(self.get(url,ttl=0 if self.fresh_market else 21600))
+        rows=raw.get('data',{}).get(symbol,{}).get('day')
+        if raw.get('code')!=0 or rows is None:raise ValueError('腾讯增量日线不可用')
+        return [dict(date=r[0],open=float(r[1]),close=float(r[2]),high=float(r[3]),low=float(r[4]),volume=float(r[5])*100,source='tencent') for r in rows if start<=r[0]<=end]
+
     def listing_date(self):
+        if self.stock.get('listed'):return self.stock['listed']
+        if self.stock.get('asset_type')=='etf':raise ValueError('ETF上市日期尚待交易所元数据核验')
         url=f"https://vip.stock.finance.sina.com.cn/corp/go.php/vCI_CorpInfo/stockid/{self.stock['code']}.phtml"
         text=BeautifulSoup(self.get(url,ttl=2592000).decode('gb18030',errors='replace'),'html.parser').get_text(' ',strip=True)
         match=re.search(r'上市日期[：:]\s*(\d{4}-\d{2}-\d{2})',text)
@@ -88,7 +103,7 @@ class Feed:
         return match[1]
 
     def risk_notices(self):
-        form=dict(pageNum='1',pageSize='30',column='sse' if self.stock['symbol'].endswith('.SH') else 'szse',tabName='fulltext',stock=self.stock['code']+','+self.stock['org_id'],searchkey='风险警示',seDate='2015-01-01~'+cutoff_date())
+        form=dict(pageNum='1',pageSize='30',column='bse' if self.stock['symbol'].endswith('.BJ') else ('sse' if self.stock['symbol'].endswith('.SH') else 'szse'),tabName='fulltext',stock=self.stock['code']+','+self.stock['org_id'],searchkey='风险警示',seDate='2015-01-01~'+cutoff_date())
         result=json.loads(self.get('https://www.cninfo.com.cn/new/hisAnnouncement/query',form=form))
         if result.get('totalAnnouncement',0)>30:raise ValueError('风险警示公告超过单页，需核实历史交易规则')
         return [a for a in result.get('announcements') or [] if re.search(r'(实施|撤销|摘帽|继续|叠加).*风险警示',a.get('announcementTitle',''))]
@@ -115,16 +130,21 @@ class Feed:
         return events
 
     def announcements(self):
-        form = dict(pageNum='1', pageSize='30', column='sse' if self.stock['symbol'].endswith('.SH') else 'szse', tabName='fulltext', stock=self.stock['code']+','+self.stock['org_id'], searchkey='权益分派实施', seDate='2015-01-01~'+datetime.now(ZoneInfo('Asia/Shanghai')).date().isoformat())
-        rows=[]
-        for page in range(1,21):
-            form['pageNum']=str(page)
-            result=json.loads(self.get('https://www.cninfo.com.cn/new/hisAnnouncement/query',form=form))
-            batch=result.get('announcements') or []
-            rows.extend(batch)
-            if page*30>=result.get('totalAnnouncement',0):return rows
-            if not batch:break
-        raise ValueError('实施公告分页不完整，保留未核实事件')
+        form=dict(pageSize='30',column='bse' if self.stock['symbol'].endswith('.BJ') else ('sse' if self.stock['symbol'].endswith('.SH') else 'szse'),tabName='fulltext',stock=self.stock['code']+','+self.stock['org_id'],seDate='2015-01-01~'+datetime.now(ZoneInfo('Asia/Shanghai')).date().isoformat())
+        rows={}
+        for keyword in ('权益分派实施','分红派息','利润分配实施'):
+            form['searchkey']=keyword
+            for page in range(1,21):
+                form['pageNum']=str(page)
+                result=json.loads(self.get('https://www.cninfo.com.cn/new/hisAnnouncement/query',form=form))
+                batch=result.get('announcements') or []
+                for a in batch:
+                    title=re.sub('<[^>]+>','',a.get('announcementTitle',''))
+                    if re.search(r'(权益分派|分红派息|利润分配).*实施(?:方案)?公告$',title) and not re.search(r'(取消|撤销)',title):
+                        rows[a['adjunctUrl']]={**a,'announcementTitle':title}
+                if page*30>=result.get('totalAnnouncement',0):break
+                if not batch or page==20:raise ValueError('实施公告分页不完整，保留未核实事件')
+        return list(rows.values())
 
     def verify_actions(self, events):
         announcements = self.announcements()
@@ -190,7 +210,7 @@ def explicit_suspension_dates(text):
     """Accept one explicit initial suspension and one distinct resumption; ignore continuations."""
     text=re.sub(r'\s+','',text)
     date_pattern=r'(20\d{2})年(\d{1,2})月(\d{1,2})日'
-    suffix=r'(?:[（(](?:星期|周)[一二三四五六日天][）)])?(?:上午|下午)?(?:开市|开盘)?(?:时)?(?:起|开始)?'
+    suffix=r'(?:[（(](?:星期|周)[一二三四五六日天][）)])?(?:上午|下午)?(?:开市|开盘)?(?:时)?(?:起)?(?:开始)?'
     def find(action):
         matches=re.finditer(r'(?:自|于)'+date_pattern+suffix+action,text)
         values=set()
@@ -220,7 +240,7 @@ def verify_suspensions(feed, missing, bars=None):
         for keyword in ('复牌','停牌'):
             page=1
             while True:
-                form=dict(pageNum=str(page),pageSize='30',column='sse' if feed.stock['symbol'].endswith('.SH') else 'szse',tabName='fulltext',stock=feed.stock['code']+','+feed.stock['org_id'],searchkey=keyword,seDate=begin+'~'+end)
+                form=dict(pageNum=str(page),pageSize='30',column='bse' if feed.stock['symbol'].endswith('.BJ') else ('sse' if feed.stock['symbol'].endswith('.SH') else 'szse'),tabName='fulltext',stock=feed.stock['code']+','+feed.stock['org_id'],searchkey=keyword,seDate=begin+'~'+end)
                 result=json.loads(feed.get('https://www.cninfo.com.cn/new/hisAnnouncement/query',form=form))
                 announcements=result.get('announcements') or []
                 for a in announcements:
