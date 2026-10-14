@@ -1,0 +1,3 @@
+export function Icon({name}:{name:'play'|'sliders'|'grid'}){
+ return <svg className="ui-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{name==='play'?<path d="m8 5 11 7-11 7z" fill="currentColor" stroke="none"/>:name==='sliders'?<><path d="M4 7h7m4 0h5M4 17h3m4 0h9"/><circle cx="13" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></>:<><rect x="4" y="4" width="6" height="6" rx="1.5"/><rect x="14" y="4" width="6" height="6" rx="1.5"/><rect x="4" y="14" width="6" height="6" rx="1.5"/><rect x="14" y="14" width="6" height="6" rx="1.5"/></>}</svg>;
+}

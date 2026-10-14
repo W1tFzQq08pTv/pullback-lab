@@ -26,3 +26,8 @@ button:focus-visible,a:focus-visible,summary:focus-visible{outline:2px solid #77
 .notice{background:#fffaf0;border-color:#e5cf98;color:#765600}
 .notice.error{background:#fff4f3;border-color:#e7b9b5;color:#a52d2d}
 .issues .error .issue-line>span,.issues .warning .issue-line>span,.count{color:var(--value-warn);background:#fff3d6}
+.strategy-options{display:flex;flex-wrap:wrap;gap:12px 24px;margin:16px 0}.strategy-comparison{background:white;border:1px solid #ddd;border-radius:8px;padding:16px;margin:16px 0}.strategy-comparison h3{margin:0}.strategy-comparison p{line-height:1.7}.strategy-comparison button{padding:7px 10px;text-align:left}.strategy-comparison .selected-strategy{background:#f1f5f8}.strategy-comparison button[aria-pressed=true]{border-color:#777;font-weight:600}.strategy-comparison table{min-width:800px}.parameter-panel select{max-width:100%;padding:8px}.parameter-panel details>p{line-height:1.8}.parameter-panel .fields>p{grid-column:1/-1}@media(max-width:600px){.strategy-options{flex-direction:column}.parameter-panel .fields{grid-template-columns:1fr}.strategy-comparison{padding:12px}}
+
+.parameter-panel .fields>.time-range-picker{grid-column:1/-1}
+
+.optimization-panel{border:1px solid #ddd;border-radius:8px;padding:16px;margin:16px 0;background:#fff}.optimization-panel h3{margin:0 0 12px}.optimization-panel .toolbar{flex-wrap:wrap}.optimization-panel pre{white-space:pre-wrap;overflow-wrap:anywhere}
