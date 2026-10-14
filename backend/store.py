@@ -3,6 +3,8 @@ import gzip
 import hashlib
 import json
 import sqlite3
+import os
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -31,7 +33,7 @@ def init():
         CREATE TABLE IF NOT EXISTS repair_attempts(snapshot_id TEXT PRIMARY KEY, attempted TEXT, result TEXT);
         CREATE TABLE IF NOT EXISTS fetch_cache(key TEXT PRIMARY KEY, fetched TEXT, digest TEXT, url TEXT);
         ''')
-        db.execute("UPDATE tasks SET status='failed', message='服务重启，任务中断；可重新执行，已完成下载会复用' WHERE status IN ('queued','running')")
+        db.execute("UPDATE tasks SET status='failed', message='服务重启，任务中断；可重新执行，已完成下载会复用' WHERE status IN ('queued','running','cancelling')")
 
 def archive(url, body):
     digest = hashlib.sha256(body).hexdigest()
@@ -39,7 +41,12 @@ def archive(url, body):
     folder.mkdir(exist_ok=True)
     path = folder / (digest + '.gz')
     if not path.exists():
-        path.write_bytes(gzip.compress(body))
+        fd,temporary=tempfile.mkstemp(dir=folder,prefix='.raw-')
+        try:
+            with os.fdopen(fd,'wb') as output:output.write(gzip.compress(body))
+            os.replace(temporary,path)
+        finally:
+            if os.path.exists(temporary):os.unlink(temporary)
     with connect() as db:
         db.execute('INSERT OR REPLACE INTO fetch_cache VALUES(?,?,?,?)', (url, now(), digest, url))
     return digest
