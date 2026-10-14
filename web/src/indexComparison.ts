@@ -1,7 +1,7 @@
 import type {Row} from './types';
 import type {Candle} from './chartData';
 import type {Range} from './ChartViewport';
-export type IndexData={symbol:string;name:string;bars:Row[];latest:string};
+export type IndexData={symbol:string;name:string;bars:Row[];latest:string;refresh_error?:string};
 export const indexColors:Record<string,string>={sh000001:'#397cbd',sz399006:'#9455c6',sz399001:'#db9224',sh000688:'#199d9b',sh000300:'#a96b45',sh000905:'#d15a9d'};
 /** Exact-date closes only: comparison never invents a suspended/missing session. */
 export function compareIndices(rows:Candle[],range:Range,indices:(IndexData & {closes?:Map<string,number>})[]){
