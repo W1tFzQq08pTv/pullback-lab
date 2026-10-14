@@ -13,19 +13,53 @@ export function ChartViewport({option,spans,range,cursor,onRange,onCursor,title,
  const outer=useRef<HTMLDivElement>(null);
  const [width,setWidth]=useState(0);
  const displayOption=useMemo(()=>{
-  if(!width||width>600)return option;
+  if(!width)return option;
   type Axis={axisLabel?:{formatter?:((v:number)=>string)|string;[key:string]:unknown};[key:string]:unknown};
-  const source=option as {grid?:object;xAxis?:Axis;yAxis?:Axis|Axis[];tooltip?:object;legend?:object};
+  const source=option as {grid?:{left?:number;right?:number};xAxis?:Axis&{data?:string[];boundaryGap?:boolean};yAxis?:Axis|Axis[];tooltip?:object;legend?:object};
   const axes=Array.isArray(source.yAxis)?source.yAxis:[source.yAxis||{}];
-  const compact=(axis:Axis)=>({...axis,splitNumber:3,axisLabel:{...axis.axisLabel,fontSize:10,inside:true,margin:4,verticalAlign:'bottom',padding:[0,2,3,2],backgroundColor:'rgba(255,255,255,.78)',hideOverlap:true,showMinLabel:false,showMaxLabel:false,formatter:(value:number)=>{
+  const measure=document.createElement('canvas').getContext('2d');
+  const mobile=width<=600,fontSize=mobile?9:11;
+  const [first,last]=rangeIndices(spans,range);
+  const dates=source.xAxis?.data||[];
+  const start=spans[first]?.first||dates[first]||'';
+  const end=spans[last]?.last||dates[last]||start;
+  const plotWidth=Math.max(1,width-(mobile?16:(source.grid?.left||0)+(source.grid?.right||0)));
+  const days=(Date.parse(end)-Date.parse(start))/86400000;
+  const slots=Math.max(2,Math.floor(plotWidth/80));
+  const mode=days>730||days/30>slots*3?'year':days>100?'month':'day';
+  const shortDate=(date:string)=>mode==='year'?date.slice(0,4):mode==='month'?date.slice(0,7):date.slice(5);
+  const textWidth=(text:string)=>{if(measure){measure.font=`${fontSize}px system-ui`;return measure.measureText(text).width;}return text.length*fontSize*.6;};
+  const labels=new Map<number,string>();
+  if(dates.length){
+   labels.set(first,start);
+   if(last!==first)labels.set(last,end);
+   const count=last-first+1,gap=source.xAxis?.boundaryGap?.valueOf()? .5:0;
+   const step=plotWidth/Math.max(1,count-1+2*gap);
+   const endLeft=(last-first+gap)*step-textWidth(end)-12;
+   let right=gap*step+textWidth(start)+12,previous=shortDate(dates[first]);
+   for(let i=first+1;i<last;i++){
+    const text=shortDate(dates[i]);
+    if(text===previous)continue;
+    const labelWidth=textWidth(text),center=(i-first+gap)*step;
+    const left=center-labelWidth/2;
+    if(left<right||left+labelWidth>endLeft)continue;
+    labels.set(i,text);right=left+labelWidth+12;previous=text;
+   }
+  }
+  const dateLabels=new Map([...labels].map(([index,label])=>[dates[index],label]));
+  const xAxis={...source.xAxis,axisLabel:{...source.xAxis?.axisLabel,fontSize,hideOverlap:true,showMinLabel:true,showMaxLabel:true,alignMinLabel:'left',alignMaxLabel:'right',margin:9,interval:(_index:number,date:string)=>dateLabels.has(date),formatter:(date:string)=>dateLabels.get(date)||''}};
+  if(!mobile)return {...option,xAxis};
+  const rich=Object.fromEntries([7,8,9,10].map(size=>['size'+size,{fontSize:size,fontFamily:'system-ui'}]));
+  const compact=(axis:Axis)=>({...axis,splitNumber:3,axisLabel:{...axis.axisLabel,fontSize:10,rich,inside:true,margin:4,verticalAlign:'bottom',padding:[0,2,3,2],backgroundColor:'rgba(255,255,255,.78)',hideOverlap:true,showMinLabel:false,showMaxLabel:false,formatter:(value:number)=>{
    const original=axis.axisLabel?.formatter;
    const text=typeof original==='function'?original(value):String(value);
-   const percent=text.includes('%');
-   const n=percent?Number(text.replace(/[,％%k]/g,''))*(text.includes('k')?1000:1):value;
-   return (Math.abs(n)>=1000?`${Number((n/1000).toFixed(1))}k`:String(Number(n.toFixed(Math.abs(n)>=100?0:2))))+(percent?'%':'');
+   const available=Math.max(38,Math.min(76,width*.18));
+   let size=10;
+   if(measure){measure.font=`${size}px system-ui`;while(size>7&&measure.measureText(text).width>available){size--;measure.font=`${size}px system-ui`;}}
+   return `{size${size}|${text}}`;
   }}});
-  return {...option,grid:{...source.grid,left:8,right:8,bottom:26},xAxis:{...source.xAxis,splitNumber:3,axisLabel:{...source.xAxis?.axisLabel,fontSize:9,hideOverlap:true,showMinLabel:false,showMaxLabel:false,margin:9,formatter:(date:string)=>date.slice(2)}},yAxis:Array.isArray(source.yAxis)?axes.map(compact):compact(axes[0]),legend:{...source.legend,textStyle:{fontSize:10},itemWidth:14,itemHeight:8,itemGap:10},tooltip:{...source.tooltip,extraCssText:`max-width:${Math.max(160,width-48)}px;max-height:240px;overflow:auto;white-space:normal;border-radius:10px;padding:8px 10px;font-size:11px;line-height:1.6;`}};
- },[option,width]);
+  return {...option,grid:{...source.grid,left:8,right:8,bottom:26},xAxis,yAxis:Array.isArray(source.yAxis)?axes.map(compact):compact(axes[0]),legend:{...source.legend,textStyle:{fontSize:10},itemWidth:14,itemHeight:8,itemGap:10},tooltip:{...source.tooltip,extraCssText:`max-width:${Math.max(160,width-48)}px;max-height:240px;overflow:auto;white-space:normal;border-radius:10px;padding:8px 10px;font-size:11px;line-height:1.6;`}};
+ },[option,width,spans,range]);
  const [mountedChart,setMountedChart]=useState<ReturnType<typeof echarts.init>|null>(null);
  const ref=useRef<HTMLDivElement>(null),instance=useRef<ReturnType<typeof echarts.init>|null>(null);
  const live=useRef({spans,range,cursor,onRange,onCursor,wheelZoom});live.current={spans,range,cursor,onRange,onCursor,wheelZoom};

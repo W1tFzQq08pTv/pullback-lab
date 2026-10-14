@@ -1,7 +1,7 @@
 import {useFeedback} from './Toast';
 import {Loading,Skeleton} from './Loading';
 import {useEffect,useState} from 'react';
-import {api,fixed,type Params,type Issue} from './types';
+import {api,exactFixed as fixed,type Params,type Issue} from './types';
 import {Info} from './Info';
 type Signal={strategy_name?:string;strategy_id?:string;as_of:string;target:string;stale:boolean;status:string;snapshot_id:string;issues:Issue[];flat?:string;holding?:string;signal?:{close:number;fast:number;middle:number;slow:number;conditions:Record<string,boolean>}};
 export function LatestSignal({params,snapshot,compact=false,onDetails,loading=false}:{params:Params|null;snapshot:string|undefined;compact?:boolean;loading?:boolean;onDetails?:()=>void}){

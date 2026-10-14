@@ -154,7 +154,6 @@ label>.custom-select{width:100%}.index-selector label>.custom-select{width:auto}
 
 /* Trade markers retain their buy/sell colors above the general button hover theme. */
 .trade-marker-layer .trade-badge:is(:hover,:focus-visible,:active) {background:var(--trade-color);color:#fff;border-color:#fff;box-shadow:0 0 0 3px color-mix(in srgb,var(--trade-color) 25%,transparent);}
-.trade-marker-layer .trade-price-dot:is(:hover,:focus-visible,:active) {background:var(--trade-color);background-clip:padding-box;border-color:#ffffffbb;box-shadow:0 0 0 2px var(--trade-color);}
 
 /* Information controls inside strategy tabs must not inherit tab-button styling. */
 .strategy-selector .segmented .strategy-choice .info-button {
@@ -170,10 +169,10 @@ label>.custom-select{width:100%}.index-selector label>.custom-select{width:auto}
 
 .trade-marker-layer .trade-badge {height:24px;min-width:0;white-space:nowrap;}
 .trade-marker-layer .trade-badge:after {display:none;}
-.trade-connector {position:absolute;inset:0;width:100%;height:100%;overflow:hidden;pointer-events:none;}
+.trade-connector {z-index:0;position:absolute;inset:0;width:100%;height:100%;overflow:hidden;pointer-events:none;}
 .trade-connector line {stroke:var(--trade-color);stroke-width:1;stroke-dasharray:3 3;opacity:.65;}
-.trade-density-hint {position:absolute;right:56px;top:2px;font-size:10px;color:#818779;background:#ffffffdf;border-radius:4px;padding:2px 6px;pointer-events:none;}
-.trade-marker-layer .trade-badge {height:18px;min-height:18px;padding:0 2px;border-radius:4px;font-size:10px;line-height:1;gap:1px;box-shadow:0 1px 2px #0002;}
+.trade-density-hint {z-index:3;position:absolute;right:56px;top:2px;font-size:10px;color:#818779;background:#ffffffdf;border-radius:4px;padding:2px 6px;pointer-events:auto;min-height:20px;cursor:pointer;}
+.trade-marker-layer .trade-badge {z-index:2;height:18px;min-height:18px;padding:0 2px;border-radius:4px;font-size:10px;line-height:1;gap:1px;box-shadow:0 1px 2px #0002;}
 .trade-marker-layer .trade-badge small {font-size:8px;}
 .stock-welcome {min-height:calc(100dvh - var(--app-header-height));display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:24px;text-align:center;}
 .stock-welcome h2 {font-size:26px;letter-spacing:-.5px;}
@@ -211,12 +210,9 @@ label>.custom-select{width:100%}.index-selector label>.custom-select{width:auto}
  .modal p,.modal small,.history button,.workflow-step-copy,.trade-detail-values dd{overflow-wrap:anywhere;min-width:0}
  .modal .metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 12px}
  .metrics>div{min-width:0}.metrics strong{font-variant-numeric:tabular-nums;overflow-wrap:anywhere;line-height:1.25}
- .modal .metrics strong{font-size:22px}.modal .metrics .metric-long{grid-column:1/-1}
+ .modal .metrics strong{font-size:22px}
  .metric-overview .metrics{grid-template-columns:repeat(3,minmax(0,1fr));width:100%;min-width:0}
  .metric-overview .metrics>div{padding-inline:8px}.metric-overview .metrics>div:first-child{padding-left:0}
- .metric-overview .metrics.metrics-long-return{grid-template-columns:repeat(2,minmax(0,1fr));row-gap:8px}
- .metric-overview .metrics-long-return>div:first-child{grid-column:1/-1;border:0}.metric-overview .metrics-long-return>div:first-child strong{font-size:27px}
- .metric-overview .metrics-long-return>div:nth-child(2){padding-left:0;border-left:0}
  .modal .comparison{display:grid;gap:12px;min-width:0}.modal .comparison>span{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}.modal .comparison strong{margin-left:0;overflow-wrap:anywhere}
  .field-pair{grid-template-columns:repeat(2,minmax(0,1fr))}.fields label,.fields .custom-select,.table-tools .custom-select{min-width:0;max-width:100%}
  .modal input,.modal select{max-width:100%;min-width:0}.modal .toolbar,.table-tools,.pagination,.trade-detail-heading{flex-wrap:wrap;gap:8px}
@@ -271,10 +267,7 @@ label>.custom-select{width:100%}.index-selector label>.custom-select{width:auto}
  .result-title>.strategy-selector{flex-wrap:nowrap}
  .result-title>.strategy-selector>.text-action{margin-left:auto}
  .metric-overview{padding:8px 10px 28px}
- .metric-overview .metrics.metrics-long-return{grid-template-columns:1.3fr 1fr 1fr;row-gap:0}
- .metric-overview .metrics-long-return>div:first-child{grid-column:auto}
- .metric-overview .metrics-long-return>div:nth-child(2){padding-left:8px;border-left:1px solid var(--line)}
- .metric-overview .metrics strong,.metric-overview .metrics-long-return>div:first-child strong{font-size:clamp(16px,4.5vw,23px);white-space:nowrap}
+ .metric-overview .metrics strong{font-size:clamp(16px,4.5vw,23px);white-space:nowrap}
  .metric-overview .metrics>div>span{font-size:9px}
  .research-workspace>.chart-terminal{flex:1;min-height:0!important;overflow:hidden;display:flex;flex-direction:column}
  .chart-terminal>.terminal-panel{flex:1;min-height:0;display:flex;flex-direction:column}
@@ -301,3 +294,32 @@ label>.custom-select{width:100%}.index-selector label>.custom-select{width:auto}
  .chart-terminal>.terminal-panel{padding-inline:0}
  .trade-density-hint{left:8px;right:8px}
 }
+
+.fit-value{min-width:0;max-width:100%}.fit-value.fit-value>.fit-value-text{font:inherit;letter-spacing:inherit;color:inherit;margin:0}
+@media(max-width:600px){
+ .fit-value{display:block;width:100%;white-space:nowrap}
+ .fit-value>.fit-value-text{display:inline-block;white-space:nowrap}
+ .fit-value[data-wrap=true],.fit-value[data-wrap=true]>.fit-value-text{white-space:normal;overflow-wrap:anywhere;max-width:100%}
+ .quote-readout>span:has(>.fit-value){min-width:0;align-items:stretch}
+}
+.chart-range-summary{flex:none;display:flex;flex-wrap:wrap;gap:3px 12px;padding:3px 6px 5px;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+.chart-range-summary span{white-space:normal;overflow-wrap:anywhere}
+@media(max-width:600px){.chart-range-summary{font-size:10px;padding:2px 6px 4px;line-height:1.4}}
+
+.formula-label{display:inline-flex;align-items:center;gap:4px;max-width:100%;vertical-align:middle}
+.formula-label .info-button.info-button,.ma-readout .info-button.info-button{width:16px;height:16px;min-width:16px;min-height:16px;max-width:16px;max-height:16px;flex-basis:16px}
+.metrics>div>span{display:flex;align-items:center;gap:4px}
+
+.mobile-formula{display:none}
+@media(max-width:600px){.record-table .mobile-formula{display:inline-flex;vertical-align:middle;margin-left:4px}.record-table .mobile-formula .info-button.info-button{width:16px;height:16px;min-width:16px;min-height:16px;max-width:16px;max-height:16px;flex-basis:16px}}
+@media(max-width:600px){.record-table td:has(>.mobile-formula>.info-button){position:relative;padding-right:20px}.record-table .mobile-formula{position:absolute;right:0;top:0;margin:0}.record-table .mobile-formula:empty{display:none}}
+.chart-primary-toolbar{flex-wrap:wrap;gap:6px 12px}
+.chart-primary-toolbar .range-shortcuts,.extended-ranges{flex-wrap:wrap}
+.range-shortcuts button{white-space:nowrap}
+
+.chart-coverage-note{display:flex;align-items:center;flex-wrap:wrap;gap:4px 10px;padding:4px 6px;font-size:11px;line-height:1.5;color:var(--muted);flex:none}
+.chart-coverage-note .text-action{font-size:11px;padding:2px 0;min-height:24px}
+
+.range-coverage-badge{display:inline-block;margin-left:8px;padding:0 5px;border-radius:4px;background:#f3f1e9;color:#807555;font-size:10px;line-height:17px}
+
+.range-details-trigger{white-space:nowrap;font-size:11px;min-height:24px;padding:2px 0}.history-adaptation{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--muted)}
