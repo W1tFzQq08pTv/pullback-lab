@@ -10,6 +10,7 @@ export function TradeMarkers({chart,markers,onSelect}:{chart:EChartsType;markers
  const [positions,setPositions]=useState<Positioned[]>([]),[hovered,setHovered]=useState<{key:string}|null>(null);
  const frame=useRef(0);
  useEffect(()=>{
+  if(chart.isDisposed())return;
   function schedule(){if(frame.current)return;frame.current=requestAnimationFrame(()=>{
    frame.current=0;
    if(chart.isDisposed())return;
@@ -23,7 +24,7 @@ export function TradeMarkers({chart,markers,onSelect}:{chart:EChartsType;markers
     const [x,y]=chart.convertToPixel({xAxisIndex:0,yAxisIndex:0},[m.index,m.anchor]) as number[];
     if(!Number.isFinite(x)||!Number.isFinite(y)||x<0||x>chart.getWidth())return [];
     const points=m.trades.map(trade=>{const [px,py]=chart.convertToPixel({xAxisIndex:0,yAxisIndex:0},[m.index,Number(trade.chart_price??trade.price)]) as number[];return {x:px,y:py,trade};});
-    const width=m.trades.length>1?20+String(m.trades.length).length*5:18;
+    const width=m.trades.length>1?22+String(m.trades.length).length*6:18;
     const half=width/2,halfHeight=9;
     const preferred=y+(m.side==='buy'&&y+20+halfHeight<=bounds.bottom?20:-20);
     const xs=[x];
@@ -39,6 +40,7 @@ export function TradeMarkers({chart,markers,onSelect}:{chart:EChartsType;markers
   chart.on('rendered',schedule);chart.on('datazoom',schedule);schedule();
   return()=>{cancelAnimationFrame(frame.current);frame.current=0;if(!chart.isDisposed()){chart.off('rendered',schedule);chart.off('datazoom',schedule);}};
  },[chart,markers]);
+ if(chart.isDisposed())return null;
  const group=positions.find(m=>`${m.index}-${m.side}`===hovered?.key);
  const active=group;
  const hidden=positions.filter(m=>!m.placed);

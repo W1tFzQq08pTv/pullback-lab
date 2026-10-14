@@ -1,0 +1,296 @@
+/* Final mobile layout rules: portrait phones and short landscape viewports. */
+.mobile-primary-actions,.mobile-chart-context,.chart-landscape-trigger,.chart-tools-short{display:none}
+.focus-detail-tools{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.chart-focus-heading{display:flex;align-items:center;gap:12px;padding:8px 12px;border-bottom:1px solid var(--line);flex-shrink:0}
+.chart-focus-heading>div{display:flex;align-items:center;gap:12px;min-width:0;flex:1}
+.chart-focus-heading span{font-size:12px;color:var(--muted)}
+.chart-focus-heading button{min-height:44px;flex-shrink:0}
+.rotate-hint{display:none}
+@media(orientation:portrait){.chart-focus-heading .rotate-hint{display:block}.chart-focus-heading>div{flex-direction:column;align-items:flex-start;gap:3px}}
+.research-workspace>.chart-terminal.chart-focus{position:fixed;inset:0;z-index:1000;width:100%;height:100dvh;min-height:0!important;margin:0;border:0;border-radius:0;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);display:flex;flex-direction:column;background:var(--surface);overflow:hidden}
+.chart-focus .chart-primary-toolbar{padding:5px 110px 5px 10px;min-height:54px;flex-shrink:0}
+.chart-focus>.terminal-panel{flex:1;min-height:0;display:flex;flex-direction:column}
+.chart-focus .interactive-chart{height:auto!important;flex:1;min-height:0}
+.chart-focus .chart-landscape-trigger,.chart-focus .mobile-chart-navigation,.chart-focus .index-selector{display:none}
+.chart-focus .chart-views button{min-height:44px}
+.mobile-actions-panel .metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;padding:12px 0}
+.mobile-actions-panel .metrics>div{min-width:0;padding:8px;border:0}
+.mobile-actions-panel .metrics strong{font-size:24px}
+.mobile-strategies,.mobile-action-menu{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:16px}
+.mobile-strategies button,.mobile-action-menu button{min-height:48px;padding:10px;font-size:14px;white-space:normal}
+.mobile-strategies button[aria-pressed=true]{background:var(--ink);color:white}
+@media(max-width:600px),(max-width:1000px) and (max-height:600px){
+ :root{--app-header-height:60px}
+ html,body{height:100%;overflow:hidden}
+ .app-header{height:calc(var(--app-header-height) + env(safe-area-inset-top));padding:env(safe-area-inset-top) max(12px,env(safe-area-inset-right)) 0 max(12px,env(safe-area-inset-left))}
+ .app-header .stock-switch{min-height:44px;font-size:16px}
+ .app-header .header-actions{display:none}
+ .research-workspace{display:flex;flex-direction:column;height:calc(100dvh - var(--app-header-height) - env(safe-area-inset-top));min-height:0;padding:0 max(10px,env(safe-area-inset-right)) max(8px,env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left));gap:8px;overflow:hidden}
+ .research-workspace>.result-title,.research-workspace>.metric-overview,.research-workspace>.workspace-footer{display:none}
+ .mobile-primary-actions{display:flex;gap:8px;flex-shrink:0}
+ .mobile-primary-actions button{min-height:44px;font-size:14px;flex:1}
+ .mobile-chart-context{display:flex;align-items:center;flex-wrap:wrap;gap:4px 10px;font-size:12px;color:var(--muted);flex-shrink:0;padding:0 2px}
+ .mobile-chart-context button{min-height:44px;color:#996318;font-size:12px}
+ .research-workspace>.chart-terminal{display:flex;flex-direction:column;flex:1;min-height:0!important;overflow:hidden;border-radius:14px}
+ .chart-terminal>.terminal-panel{display:flex;flex-direction:column;flex:1;min-height:0;padding:4px}
+ .chart-terminal .interactive-chart{flex:1;min-height:0;height:auto!important}
+ .chart-terminal .chart-primary-toolbar{display:flex;flex-wrap:nowrap;gap:4px;min-height:58px;padding:5px 62px 5px 6px;flex-shrink:0}
+ .chart-primary-toolbar>.range-shortcuts{display:none}
+ .chart-views{display:flex;flex:1;gap:0;padding:2px;min-width:0}
+ .chart-views button{min-height:44px;flex:1;font-size:12px;padding:4px 6px;white-space:nowrap}
+ .chart-landscape-trigger{display:block;min-height:44px;font-size:12px;padding:4px 8px}
+ .chart-tools-label{display:none}.chart-tools-short{display:inline}
+ .mobile-chart-navigation{display:none}
+ .index-selector{display:flex;flex-wrap:wrap;flex-shrink:0;gap:2px 8px;margin:0 4px}
+ .index-selector .index-comparison-controls{display:none}
+ .index-selector .range-details-trigger,.index-selector .mobile-quote-toggle{display:inline-flex;align-items:center;min-height:44px;font-size:12px}
+ .mobile-quote-toggle{margin-left:auto}
+ .index-selector .quote-actions:not(.mobile-expanded){display:none}
+ .index-selector .quote-actions.mobile-expanded{display:flex;max-height:120px;overflow:auto;overscroll-behavior:contain;touch-action:pan-y;font-size:12px}
+ .index-selector .quote-actions button:not(.info-button){min-height:44px;font-size:12px}
+ .modal{max-height:calc(100dvh - 24px);max-width:calc(100vw - 20px);padding:18px;overscroll-behavior:contain}
+ .modal .modal-heading{top:-18px}.modal .modal-heading>button{min-width:44px;min-height:44px}
+ .modal button:not(.info-button){min-height:44px}
+ .mobile-actions-panel{margin:auto 0 0;width:100%;max-width:100%;max-height:85dvh;border-radius:20px 20px 0 0;padding-bottom:max(20px,env(safe-area-inset-bottom));overflow:auto}
+ .chart-focus .chart-landscape-trigger{display:none}
+ .chart-focus .index-selector{display:none}
+ .chart-focus-heading{min-height:64px}
+ .chart-focus .chart-primary-toolbar{padding-right:64px}
+ .chart-focus .chart-views{flex:0 1 420px}
+ .chart-terminal .empty{min-height:0;overflow:auto}
+}
+@media(max-width:1000px) and (max-height:600px) and (orientation:landscape){
+ :root{--app-header-height:52px}
+ .mobile-primary-actions{position:absolute;top:calc(4px + env(safe-area-inset-top));right:max(12px,env(safe-area-inset-right));width:230px}
+ .app-header .brand{max-width:calc(100% - 242px)}
+ .research-workspace{gap:4px}
+ .chart-terminal:not(.chart-focus) .index-selector{display:none}
+ .chart-focus-heading{min-height:52px;padding-block:4px}
+ .mobile-actions-panel{max-height:94dvh}
+}
+
+/* Tools live in the toolbar flow so wrapped focus headings never overlap them. */
+.chart-primary-toolbar>.chart-tools-trigger{position:static;flex-shrink:0;margin-left:auto}
+.chart-terminal .chart-primary-toolbar{padding-right:8px}
+.chart-focus .chart-primary-toolbar>.chart-tools-trigger{min-height:44px}
+@media(max-width:600px),(max-width:1000px) and (max-height:600px){
+ .chart-primary-toolbar>.chart-tools-trigger{min-height:44px;padding:4px 8px;font-size:12px}
+ .chart-primary-toolbar>.chart-tools-trigger .ui-icon{display:none}
+}
+
+/* Portrait keeps the three frequently consulted metrics above the chart. */
+@media(max-width:600px) and (orientation:portrait){
+ .research-workspace{overflow-y:auto;overscroll-behavior-y:contain}
+ .research-workspace>.chart-terminal:not(.chart-focus){flex:0 0 auto}
+ .chart-terminal:not(.chart-focus)>.terminal-panel{flex:0 0 auto}
+ .chart-terminal:not(.chart-focus) .interactive-chart{flex:none!important;height:clamp(240px,78vw,340px)!important}
+ .chart-terminal:not(.chart-focus) .chart-skeleton{flex:none;height:clamp(240px,78vw,340px)}
+
+ .research-workspace>.metric-overview{display:block;flex-shrink:0;padding:10px 8px;border-radius:12px}
+ .metric-overview>.metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;width:100%}
+ .metric-overview .metrics>div{min-width:0;padding:0 6px}
+ .metric-overview .metrics>div>span{font-size:11px;line-height:1.5;letter-spacing:0;white-space:normal;display:flex;align-items:center;flex-wrap:wrap;gap:2px;margin-bottom:4px}
+ .metric-overview .metrics strong{font-size:clamp(17px,5vw,23px);line-height:1.25;letter-spacing:-.5px}
+ .metric-overview>.next-day-summary,.metric-overview>.text-action{display:none}
+}
+
+/* Icon controls need equal dimensions, not just a larger minimum height. */
+@media(max-width:600px),(max-width:1000px) and (max-height:600px){
+ .chart-tools-modal .terminal-range>div{display:flex;align-items:center;gap:8px;max-width:100%}
+ .chart-tools-modal .terminal-range>div>button[aria-label]{display:inline-flex;align-items:center;justify-content:center;flex:0 0 44px;width:44px;min-width:44px;max-width:44px;height:44px;min-height:44px;max-height:44px;padding:0;border-radius:10px;line-height:1;font-size:18px}
+ .chart-tools-modal .terminal-range>div>button:not([aria-label]){display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;height:44px;padding:0 12px;border-radius:10px;white-space:nowrap;line-height:1.2}
+ .modal .modal-heading>button{display:inline-flex;align-items:center;justify-content:center;flex:0 0 44px;width:44px;max-width:44px;height:44px;max-height:44px;padding:0;line-height:1}
+}
+
+/* Period selection stays outside dialogs in every chart workspace. */
+.chart-period-toolbar{display:flex;align-items:center;gap:12px;flex-shrink:0;padding:6px 12px;border-bottom:1px solid var(--line)}
+.chart-period-toolbar>.period-switch{display:flex;gap:2px;padding:2px;background:#f3f4ef;border-radius:10px}
+.chart-period-toolbar .period-switch button{min-width:44px;min-height:36px;padding:6px 12px;border:0;border-radius:8px;background:transparent;color:var(--muted)}
+.chart-period-toolbar .period-switch button[aria-pressed=true]{background:var(--ink);color:white}
+.chart-period-toolbar>span{font-size:11px;color:var(--muted);margin-left:auto}
+@media(max-width:600px),(max-width:1000px) and (max-height:600px){
+ .chart-period-toolbar{gap:6px;padding:4px 8px}
+ .chart-period-toolbar .period-switch button{min-height:44px;padding:4px 8px}
+ .chart-period-toolbar>span{font-size:10px;max-width:112px;line-height:1.5}
+}
+
+/* Compact controls: a single desktop row, two phone rows. */
+.mobile-result-summary{display:none}
+.chart-primary-toolbar .chart-period-toolbar{padding:0;border:0;gap:0}
+.chart-terminal .chart-primary-toolbar{gap:8px;justify-content:flex-start}
+.chart-primary-toolbar .range-shortcuts{margin-left:auto}
+.chart-primary-toolbar>.chart-tools-trigger{margin-left:0}
+@media(min-width:1001px){
+ .chart-primary-toolbar .chart-views button{padding-inline:12px}
+ .chart-primary-toolbar .period-switch button{padding-inline:8px;min-width:40px}
+ .chart-primary-toolbar .range-shortcuts button{padding-inline:7px}
+ .chart-terminal .index-selector{gap:6px;margin-bottom:0}
+ .chart-terminal>.terminal-panel{padding-top:4px}
+}
+@media(max-width:600px),(max-width:1000px) and (max-height:600px){
+ .chart-terminal .chart-primary-toolbar{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:4px;padding:5px 6px}
+ .chart-primary-toolbar>.chart-views{grid-column:1;grid-row:1}
+ .chart-primary-toolbar>.chart-landscape-trigger{grid-column:2;grid-row:1}
+ .chart-primary-toolbar>.chart-tools-trigger{grid-column:3;grid-row:1}
+ .chart-primary-toolbar>.chart-period-toolbar{grid-row:2;grid-column:1/-1}
+ .chart-primary-toolbar .period-switch{width:100%}
+ .chart-primary-toolbar .period-switch button{flex:1}
+ .chart-terminal .index-selector{display:none}
+ .chart-focus .chart-primary-toolbar>.chart-views{grid-column:1/3}
+}
+@media(max-width:600px) and (orientation:portrait){
+ .mobile-result-summary{display:block;margin-top:auto;padding:12px;background:#ffffff80;border:1px solid var(--line);border-radius:12px}
+ .mobile-summary-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px}
+ .mobile-summary-heading>span{font-size:10px;color:var(--muted)}
+ .mobile-result-summary .metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));padding:12px 0;border:0;gap:8px}
+ .mobile-result-summary .metrics>div:nth-child(-n+3){display:none}
+ .mobile-result-summary .metrics>div{min-width:0}
+ .mobile-result-summary .metrics>div>span{display:flex;align-items:center;gap:3px;margin-bottom:5px;font-size:11px}
+ .mobile-result-summary .metrics strong{font-size:19px}
+ .mobile-summary-actions{display:flex;gap:8px}
+ .mobile-summary-actions button{flex:1;min-height:44px;padding:6px;font-size:12px}
+}
+/* Mobile market terminal, grounded in the supplied portrait/landscape references. */
+@media(max-width:600px),(max-width:1000px) and (max-height:600px){
+ :root{--studio-bg:#f5f6f7}
+ .app-header{background:var(--studio-bg);border:0;min-height:60px}
+ .app-header .stock-switch{color:var(--ink);background:transparent;border:0;padding:4px 0;border-radius:0;font-size:17px;display:flex;flex-direction:column;align-items:flex-start;gap:2px}
+ .app-header .stock-switch span{color:var(--muted);font-size:11px}
+ .app-header .brand{max-width:calc(100% - 175px)}
+ .mobile-primary-actions{position:absolute;top:calc(8px + env(safe-area-inset-top));right:max(10px,env(safe-area-inset-right));width:168px;gap:6px;z-index:1}
+ .mobile-primary-actions button{min-height:44px;padding:4px 6px;font-size:12px;border-color:var(--line);background:white;color:var(--ink);box-shadow:none}
+ .mobile-primary-actions .primary{background:var(--ink);color:white}
+ .research-workspace{padding-inline:0;gap:5px}
+ .mobile-chart-context{padding:4px 12px 0;font-size:11px}
+ .research-workspace>.metric-overview{margin:0 8px;padding:7px 5px;border-radius:4px;border:0;background:white}
+ .research-workspace>.chart-terminal{border-radius:0;border-inline:0;box-shadow:none}
+ .mobile-market-quote{display:grid;grid-template-columns:110px minmax(0,1fr);gap:3px 12px;padding:9px 12px 5px;background:white;border-bottom:1px solid #edf0f2;flex-shrink:0}
+ .market-price{display:flex;flex-direction:column;justify-content:center;gap:3px;font-variant-numeric:tabular-nums}
+ .market-price strong{font-size:30px;line-height:1.1;letter-spacing:-1px}
+ .market-price span{font-size:12px;font-weight:600;white-space:nowrap}
+ .mobile-market-quote dl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px 12px;margin:0;font-size:12px}
+ .mobile-market-quote dl>div{display:flex;align-items:center;justify-content:space-between;gap:4px;min-width:0}
+ .mobile-market-quote dt{color:#8b8e91}.mobile-market-quote dd{margin:0;white-space:nowrap;font-variant-numeric:tabular-nums}
+ .mobile-market-quote small{grid-column:1/-1;color:#929598;font-size:10px;text-align:right}
+ .chart-terminal .chart-primary-toolbar{padding:0 8px;gap:0 4px;border-bottom:1px solid #e9ecef}
+ .chart-primary-toolbar>.chart-views,.chart-primary-toolbar .period-switch{background:none;border-radius:0;padding:0}
+ .chart-primary-toolbar>.chart-views button,.chart-primary-toolbar .period-switch button{border-radius:0!important;box-shadow:none;border:0;border-bottom:2px solid transparent;background:transparent!important;color:#777;font-size:13px;min-height:40px}
+ .chart-primary-toolbar>.chart-views button[aria-pressed=true],.chart-primary-toolbar .period-switch button[aria-pressed=true]{background:transparent!important;color:var(--ink);border-bottom-color:var(--ink);font-weight:650}
+ .chart-primary-toolbar>.chart-landscape-trigger,.chart-primary-toolbar>.chart-tools-trigger{background:transparent;border:0;padding-inline:8px;box-shadow:none}
+ .mobile-ma-strip{display:flex;align-items:center;gap:6px;padding:0 8px;border-bottom:1px solid #edf0f2;flex-shrink:0;min-height:38px}
+ .mobile-ma-strip>div{display:flex;flex-wrap:nowrap;gap:9px;overflow-x:auto;flex:1;min-width:0;font-size:11px;scrollbar-width:none}
+ .mobile-ma-strip span{white-space:nowrap}.mobile-ma-strip button{min-height:38px;padding:4px;border:0;background:transparent;font-size:11px;max-width:105px}
+ .chart-terminal>.terminal-panel{padding:0 4px 2px}
+ .research-workspace>.chart-terminal:not(.chart-focus) .interactive-chart{height:clamp(230px,70vw,300px)!important}
+ .mobile-volume-panel{flex:none;border-top:1px solid #e8ebed;margin-top:0;background:white}
+ .volume-heading{display:flex;align-items:center;gap:10px;min-height:28px;padding:3px 6px;font-size:11px;color:#666}
+ .volume-heading strong{font-weight:500;color:#333}.volume-heading small{margin-left:auto;font-size:10px;color:#999}
+ .chart-terminal .mobile-volume-panel .interactive-chart{height:96px!important;min-height:96px!important;flex:none!important}
+ .volume-empty{height:96px;display:grid;place-items:center;color:#999;font-size:12px}
+ .mobile-result-summary{margin:0 8px;padding:10px;border:0;border-radius:4px;background:white}
+ .mobile-result-summary .metrics{padding:8px 0}
+ .mobile-result-summary .metrics strong{font-size:17px}
+ .mobile-summary-actions button{background:#f7f8fa;border-color:#e9ebee}
+ .chart-focus .mobile-market-quote{padding-block:4px}
+ .chart-focus-heading{padding:4px 10px;min-height:44px}
+ .chart-focus-heading>div{flex-direction:row;gap:10px}
+ .chart-focus-heading button{min-height:40px}
+ .chart-focus .mobile-volume-panel .interactive-chart{height:72px!important;min-height:72px!important}
+}
+@media(max-width:1000px) and (max-height:600px) and (orientation:landscape){
+ .chart-terminal:not(.chart-focus) .mobile-market-quote{display:none}
+ .chart-terminal .chart-primary-toolbar{display:flex;min-height:44px;gap:8px}
+ .chart-primary-toolbar>.chart-views{flex:0 0 auto}
+ .chart-primary-toolbar .chart-period-toolbar{margin-left:auto}
+ .chart-primary-toolbar .period-switch button{min-width:48px}
+ .chart-focus-heading{min-height:42px}
+ .chart-focus .mobile-market-quote{grid-template-columns:130px 1fr auto;padding:3px 12px;align-items:center;gap:10px}
+ .chart-focus .mobile-market-quote dl{grid-template-columns:repeat(4,minmax(0,1fr))}
+ .chart-focus .mobile-market-quote small{grid-column:auto;max-width:115px}
+ .chart-focus .market-price{flex-direction:row;align-items:center;gap:8px}.chart-focus .market-price strong{font-size:23px}.chart-focus .market-price span{font-size:10px;white-space:normal}
+ .mobile-ma-strip{min-height:28px}.mobile-ma-strip button{min-height:28px}
+ .chart-terminal .mobile-volume-panel .interactive-chart{height:58px!important;min-height:58px!important}
+ .volume-heading{min-height:22px;padding-block:0}
+ .chart-focus .mobile-volume-panel .interactive-chart{height:58px!important;min-height:58px!important}
+ .research-workspace>.chart-terminal:not(.chart-focus) .terminal-panel>.interactive-chart{height:auto!important;flex:1!important;min-height:70px}
+}
+@media(max-width:600px),(max-width:1000px) and (max-height:600px){
+ .research-workspace>.chart-terminal .mobile-volume-panel .interactive-chart{height:96px!important;min-height:96px!important;max-height:96px;flex:none!important}
+ .mobile-market-quote .market-price.up{color:#d83b3b}.mobile-market-quote .market-price.down{color:#15955a}
+}
+@media(max-width:1000px) and (max-height:600px) and (orientation:landscape){
+ .research-workspace>.chart-terminal .mobile-volume-panel .interactive-chart{height:58px!important;min-height:58px!important;max-height:58px}
+}
+
+.focus-quote{display:none}
+@media(max-width:1000px) and (max-height:600px) and (orientation:landscape){
+ .chart-focus .mobile-market-quote{display:none}
+ .chart-focus-heading .focus-quote{display:block;white-space:nowrap;color:var(--ink);font-variant-numeric:tabular-nums}
+ .chart-focus-heading>div{flex:0 1 auto}.chart-focus-heading>div>span{display:none}
+ .chart-focus-heading .chart-focus-exit{margin-left:auto}
+ .chart-focus .chart-primary-toolbar{order:4;border-top:1px solid var(--line);border-bottom:0;flex:none}
+ .chart-focus .mobile-ma-strip{order:1}
+ .chart-focus>.terminal-panel{order:2}
+}
+
+/* One quotation tab strip instead of nested view/period segmented controls. */
+@media(max-width:600px),(max-width:1000px) and (max-height:600px){
+ .chart-terminal .chart-primary-toolbar{display:flex;flex-wrap:nowrap;gap:2px;min-height:46px;padding:0 4px}
+ .chart-primary-toolbar>.chart-views,.chart-primary-toolbar>.chart-period-toolbar{display:none}
+ .mobile-market-tabs{display:flex;align-items:stretch;flex:1;min-width:0;overflow-x:auto;scrollbar-width:none}
+ .mobile-market-tabs button{position:relative;flex:1 0 42px;min-width:42px;min-height:46px;padding:4px 5px 7px;border:0;border-radius:0;background:transparent;box-shadow:none;color:#777;font-size:14px;white-space:nowrap}
+ .mobile-market-tabs button[aria-pressed=true]{color:var(--ink);font-weight:700}
+ .mobile-market-tabs button[aria-pressed=true]:after{content:'';position:absolute;bottom:4px;left:calc(50% - 7px);width:14px;height:3px;border-radius:2px;background:var(--ink)}
+ .chart-primary-toolbar>.chart-landscape-trigger,.chart-primary-toolbar>.chart-tools-trigger{min-width:44px;min-height:44px;padding:4px;font-size:11px;flex:none;margin-left:0}
+ .chart-focus .mobile-market-tabs{flex:0 1 420px}
+ .chart-focus .chart-primary-toolbar>.chart-tools-trigger{margin-left:auto}
+}
+
+.mobile-market-quote .quote-up{color:#d83b3b}
+.mobile-market-quote .quote-down{color:#15955a}
+.mobile-market-quote .market-price:not(.quote-up):not(.quote-down){color:var(--ink)}
+
+/* Shared desktop segmented-control styling for view and candle period. */
+@media(min-width:1001px),(min-width:601px) and (min-height:601px){
+ .chart-primary-toolbar .chart-toggle{display:flex;align-items:center;gap:2px;padding:3px;border:0;border-radius:11px;background:#f3f4ef}
+ .chart-primary-toolbar .chart-toggle button{display:inline-flex;align-items:center;justify-content:center;min-width:44px;height:32px;min-height:32px;margin:0;padding:6px 12px;border:0;border-radius:8px!important;background:transparent!important;color:#797f74;font-size:12px;font-weight:500;line-height:20px;box-shadow:none}
+ .chart-primary-toolbar .chart-toggle button[aria-pressed=true]{background:#2e312b!important;color:#fff;font-weight:600;box-shadow:0 2px 4px #20271c1a}
+ .chart-primary-toolbar .chart-toggle button:hover:not(:disabled):not([aria-pressed=true]){background:#e7eae2!important;box-shadow:none}
+}
+
+/* Range presets reflect the actual visible candle interval, including after zooming. */
+.range-shortcuts button[aria-pressed=true],.range-shortcuts button[aria-pressed=true]:hover{background:#2e312b!important;color:#fff;font-weight:600;box-shadow:0 2px 4px #20271c1a}
+
+/* Desktop quote summary and volume share the chart cursor with mobile. */
+@media(min-width:1001px),(min-width:601px) and (min-height:601px){
+ .chart-terminal:not(.chart-focus) .mobile-market-quote{display:flex;align-items:center;gap:24px;padding:8px 18px;border-bottom:1px solid #edf0f2;flex:none}
+ .mobile-market-quote .market-price{display:flex;flex-direction:column;gap:2px;min-width:130px;font-variant-numeric:tabular-nums}
+ .mobile-market-quote .market-price strong{font-size:24px;line-height:1.1}
+ .mobile-market-quote .market-price span{font-size:12px}
+ .mobile-market-quote dl{display:grid;grid-template-columns:repeat(6,minmax(65px,1fr));flex:1;gap:14px;margin:0;font-size:12px}
+ .mobile-market-quote dl>div{display:flex;flex-direction:column;gap:4px}
+ .mobile-market-quote dt{color:#8b8e91}.mobile-market-quote dd{margin:0;white-space:nowrap;font-variant-numeric:tabular-nums}
+ .mobile-market-quote small{max-width:170px;font-size:11px;color:#929598}
+ .mobile-volume-panel{flex:none;border-top:1px solid #e8ebed;background:white}
+ .volume-heading{display:flex;align-items:center;gap:12px;min-height:24px;padding:2px 8px;font-size:12px;color:#666}
+ .volume-heading strong{font-weight:500;color:#333}.volume-heading small{margin-left:auto;color:#999}
+ .chart-terminal .mobile-volume-panel .interactive-chart{height:90px!important;min-height:90px!important;flex:none!important}
+ .volume-empty{height:90px;display:grid;place-items:center;color:#999;font-size:12px}
+}
+
+/* Desktop header: compact quote row followed by a single control row. */
+@media(min-width:1001px),(min-width:601px) and (min-height:601px){
+ .chart-terminal:not(.chart-focus) .mobile-market-quote{gap:20px;padding:8px 16px;min-height:48px}
+ .mobile-market-quote .market-price{flex-direction:row;align-items:baseline;gap:10px;min-width:0}
+ .mobile-market-quote dl{display:flex;flex-wrap:wrap;gap:8px 22px}
+ .mobile-market-quote dl>div{flex-direction:row;align-items:baseline;gap:8px}
+ .mobile-market-quote small{max-width:210px;text-align:right;flex-shrink:0}
+ .chart-terminal>.terminal-panel>.index-selector{display:none}
+ .chart-terminal>.chart-primary-toolbar{padding:6px 10px;min-height:48px;gap:8px;flex-wrap:wrap}
+ .chart-primary-toolbar .chart-tools-trigger{position:static;margin-left:0;flex-shrink:0}
+ .desktop-chart-context{display:flex;align-items:center;gap:4px;margin-left:auto}
+ .desktop-chart-context button{font-size:11px;padding:6px 8px;min-height:32px;background:transparent;border:0;color:#73796e;white-space:nowrap}
+ .chart-terminal>.terminal-panel{padding-top:2px}
+}
+
+.macd-dif{color:#b88900}.macd-dea{color:#9455c6}.macd-panel .volume-heading{gap:8px;flex-wrap:wrap}.macd-panel .volume-heading .info-button{flex:none}
