@@ -9,11 +9,20 @@ export function rangeIndices(spans:Span[],range:Range):[number,number]{
  let last=spans.length-1;while(last>first&&spans[last].first>range[1])last--;
  return [first,last];
 }
-export function ChartViewport({option,spans,range,cursor,onRange,onCursor,title,height=300,markers,onTradeSelect,wheelZoom=false}:{option:object;spans:Span[];range:Range;cursor:string|null;onRange:(r:Range)=>void;onCursor:(d:string)=>void;title:string;height?:number|string;wheelZoom?:boolean;markers?:TradeMarker[];onTradeSelect?:(marker:TradeMarker)=>void}){
+export function ChartViewport({option,spans,range,cursor,onRange,onCursor,title,height=300,markers,onTradeSelect,wheelZoom=false,linkedHover=false,onHoverChange,hoverPoint,onHoverPoint}:{option:object;spans:Span[];range:Range;cursor:string|null;onRange:(r:Range)=>void;onCursor:(d:string)=>void;title:string;height?:number|string;wheelZoom?:boolean;linkedHover?:boolean;hoverPoint?:{x:number;y:number}|null;onHoverPoint?:(point:{x:number;y:number})=>void;onHoverChange?:(active:boolean)=>void;markers?:TradeMarker[];onTradeSelect?:(marker:TradeMarker)=>void}){
  const outer=useRef<HTMLDivElement>(null);
  const [width,setWidth]=useState(0);
+ const pointer=useRef(hoverPoint);pointer.current=hoverPoint;
+ const tooltipPosition=useMemo(()=> (_point:unknown,_params:unknown,_dom:unknown,_rect:unknown,size:{contentSize:number[]})=>{
+  const mouse=pointer.current,host=ref.current;
+  if(!mouse||!host)return 'inside';
+  const bounds=host.getBoundingClientRect(),[w,h]=size.contentSize;
+  const x=Math.max(8,Math.min(mouse.x+16+w>window.innerWidth?mouse.x-w-16:mouse.x+16,window.innerWidth-w-8));
+  const y=Math.max(8,Math.min(mouse.y+16+h>window.innerHeight?mouse.y-h-16:mouse.y+16,window.innerHeight-h-8));
+  return [x-bounds.left,y-bounds.top];
+ },[]);
  const displayOption=useMemo(()=>{
-  if(!width)return option;
+  if(!width)return {...option,tooltip:{...(option as {tooltip?:object}).tooltip,appendTo:()=>outer.current?.closest('dialog')||document.body,confine:false,transitionDuration:0,position:tooltipPosition}};
   type Axis={axisLabel?:{formatter?:((v:number)=>string)|string;[key:string]:unknown};[key:string]:unknown};
   const source=option as {grid?:{left?:number;right?:number};xAxis?:Axis&{data?:string[];boundaryGap?:boolean};yAxis?:Axis|Axis[];tooltip?:object;legend?:object};
   const axes=Array.isArray(source.yAxis)?source.yAxis:[source.yAxis||{}];
@@ -48,17 +57,18 @@ export function ChartViewport({option,spans,range,cursor,onRange,onCursor,title,
   }
   const dateLabels=new Map([...labels].map(([index,label])=>[dates[index],label]));
   const xAxis={...source.xAxis,axisLabel:{...source.xAxis?.axisLabel,fontSize,hideOverlap:true,showMinLabel:true,showMaxLabel:true,alignMinLabel:'left',alignMaxLabel:'right',margin:9,interval:(_index:number,date:string)=>dateLabels.has(date),formatter:(date:string)=>dateLabels.get(date)||''}};
-  if(!mobile)return {...option,xAxis};
+  const tooltip={...source.tooltip,appendTo:()=>outer.current?.closest('dialog')||document.body,confine:false,transitionDuration:0,position:tooltipPosition};
+  if(!mobile)return {...option,xAxis,tooltip};
   const rich=Object.fromEntries([7,8,9,10].map(size=>['size'+size,{fontSize:size,fontFamily:'system-ui'}]));
-  const compact=(axis:Axis)=>({...axis,splitNumber:3,axisLabel:{...axis.axisLabel,fontSize:10,rich,inside:true,margin:4,verticalAlign:'bottom',padding:[0,2,3,2],backgroundColor:'rgba(255,255,255,.78)',hideOverlap:true,showMinLabel:false,showMaxLabel:false,formatter:(value:number)=>{
+  const compact=(axis:Axis,index=0)=>({...axis,splitNumber:source.xAxis?.axisLabel?.show===false?2:3,z:5,axisLabel:{...axis.axisLabel,fontSize:10,rich,inside:true,margin:4,verticalAlign:'bottom',padding:[2,4],borderRadius:3,backgroundColor:'rgba(255,255,255,.92)',color:'#72787e',hideOverlap:true,showMinLabel:false,showMaxLabel:false,formatter:(value:number)=>{
    const original=axis.axisLabel?.formatter;
    const text=typeof original==='function'?original(value):String(value);
-   const available=Math.max(38,Math.min(76,width*.18));
+   const available=index>0?Math.max(38,Math.min(76,width*.18)):44;
    let size=10;
    if(measure){measure.font=`${size}px system-ui`;while(size>7&&measure.measureText(text).width>available){size--;measure.font=`${size}px system-ui`;}}
    return `{size${size}|${text}}`;
   }}});
-  return {...option,grid:{...source.grid,left:8,right:8,bottom:26},xAxis,yAxis:Array.isArray(source.yAxis)?axes.map(compact):compact(axes[0]),legend:{...source.legend,textStyle:{fontSize:10},itemWidth:14,itemHeight:8,itemGap:10},tooltip:{...source.tooltip,extraCssText:`max-width:${Math.max(160,width-48)}px;max-height:240px;overflow:auto;white-space:normal;border-radius:10px;padding:8px 10px;font-size:11px;line-height:1.6;`}};
+  return {...option,grid:{...source.grid,left:8,right:8,bottom:source.xAxis?.axisLabel?.show===false?8:26},xAxis,yAxis:Array.isArray(source.yAxis)?axes.map(compact):compact(axes[0]),legend:{...source.legend,textStyle:{fontSize:10},itemWidth:14,itemHeight:8,itemGap:10},tooltip:{...tooltip,extraCssText:`max-width:${Math.max(160,width-48)}px;max-height:240px;overflow:auto;white-space:normal;border-radius:10px;padding:8px 10px;font-size:11px;line-height:1.6;`}};
  },[option,width,spans,range]);
  const [mountedChart,setMountedChart]=useState<ReturnType<typeof echarts.init>|null>(null);
  const ref=useRef<HTMLDivElement>(null),instance=useRef<ReturnType<typeof echarts.init>|null>(null);
@@ -80,13 +90,13 @@ export function ChartViewport({option,spans,range,cursor,onRange,onCursor,title,
   element.addEventListener('touchmove',moveTouch,{capture:true,passive:true});
   const pageWheel=(event:WheelEvent)=>{if(live.current.wheelZoom)event.preventDefault();else if(!event.ctrlKey)event.stopPropagation();};
   element.addEventListener('wheel',pageWheel,{capture:true,passive:false});
-  const observer=new ResizeObserver(()=>{chart.resize();setWidth(element.clientWidth);});observer.observe(element);
+  const observer=new ResizeObserver(()=>{if(chart.isDisposed())return;chart.resize();setWidth(element.clientWidth);});observer.observe(element);
   return()=>{element.removeEventListener('touchstart',beginTouch,true);element.removeEventListener('touchmove',moveTouch,true);element.removeEventListener('wheel',pageWheel,true);observer.disconnect();chart.dispose();instance.current=null;};
  },[]);
  // Keep the grid/dataZoom controllers alive while range-dependent series update during a drag.
  useEffect(()=>{const chart=instance.current;if(!chart)return;applying.current=true;chart.setOption(displayOption as Parameters<typeof chart.setOption>[0],{replaceMerge:['series','yAxis','xAxis']});const [startValue,endValue]=rangeIndices(spans,live.current.range);chart.dispatchAction({type:'dataZoom',startValue,endValue},{silent:true});applying.current=false;},[displayOption,spans]);
  useEffect(()=>{const chart=instance.current;if(!chart||!spans.length)return;const [startValue,endValue]=rangeIndices(spans,range);applying.current=true;chart.dispatchAction({type:'dataZoom',startValue,endValue},{silent:true});applying.current=false;},[range,spans]);
- useEffect(()=>{if(!cursor||!instance.current||!outer.current?.matches(':hover, :focus-visible'))return;const index=spans.findIndex(s=>s.first<=cursor&&s.last>=cursor);if(index<0)return;applying.current=true;instance.current.dispatchAction({type:'showTip',seriesIndex:0,dataIndex:index},{silent:true});applying.current=false;},[cursor,spans,option]);
+ useEffect(()=>{if(!instance.current)return;if(!linkedHover&&!outer.current?.matches(':hover, :focus-visible')){instance.current.dispatchAction({type:'hideTip'},{silent:true});instance.current.dispatchAction({type:'updateAxisPointer',currTrigger:'leave'},{silent:true});return;}if(!cursor)return;const index=spans.findIndex(s=>s.first<=cursor&&s.last>=cursor);if(index<0)return;applying.current=true;instance.current.dispatchAction({type:'showTip',seriesIndex:0,dataIndex:index},{silent:true});applying.current=false;},[cursor,spans,option,linkedHover,hoverPoint]);
  function key(e:KeyboardEvent){outer.current?.removeAttribute('data-pointer-focus');if((e.target as HTMLElement).closest('button')||!spans.length)return;const [a,b]=rangeIndices(spans,range),size=b-a+1;let start=a,end=b;
   if(e.key==='Enter'&&onTradeSelect){const i=spans.findIndex(s=>s.first<=String(cursor)&&s.last>=String(cursor));const marker=markers?.find(m=>m.index===i);if(marker){e.preventDefault();onTradeSelect(marker);}return;}
   if(e.key==='ArrowLeft'||e.key==='ArrowRight'){const found=cursor?spans.findIndex(s=>s.first<=cursor&&s.last>=cursor):-1;const index=Math.max(0,Math.min(spans.length-1,(found<0?b:found)+(e.key==='ArrowLeft'?-1:1)));onCursor(spans[index].last);if(index<a){start=index;end=Math.min(spans.length-1,start+size-1);}else if(index>b){end=index;start=Math.max(0,end-size+1);}}
@@ -97,5 +107,5 @@ export function ChartViewport({option,spans,range,cursor,onRange,onCursor,title,
   else return;
   e.preventDefault();if(start!==a||end!==b)onRange([spans[start].first,spans[end].last]);
  }
- return <div ref={outer} tabIndex={0} role="group" aria-label={title+'，按住向右拖动查看更早日期，向左拖动查看更晚日期，方向键浏览，Enter查看当前交易'} onMouseDown={e=>{if(!(e.target as HTMLElement).closest('button')){outer.current?.setAttribute('data-pointer-focus','true');outer.current?.focus({preventScroll:true});}}} onBlur={()=>outer.current?.removeAttribute('data-pointer-focus')} onKeyDown={key} style={{height,width:'100%',overflow:'hidden',position:'relative'}} className="interactive-chart"><div ref={ref} style={{height:'100%',width:'100%'}}/>{mountedChart&&markers&&onTradeSelect?<TradeMarkers chart={mountedChart} markers={markers} onSelect={onTradeSelect}/>:null}</div>;
+ return <div ref={outer} onMouseMove={e=>onHoverPoint?.({x:e.clientX,y:e.clientY})} onMouseEnter={()=>onHoverChange?.(true)} onMouseLeave={()=>onHoverChange?.(false)} tabIndex={0} role="group" aria-label={title+'，按住向右拖动查看更早日期，向左拖动查看更晚日期，方向键浏览，Enter查看当前交易'} onMouseDown={e=>{if(!(e.target as HTMLElement).closest('button')){outer.current?.setAttribute('data-pointer-focus','true');outer.current?.focus({preventScroll:true});}}} onBlur={()=>outer.current?.removeAttribute('data-pointer-focus')} onKeyDown={key} style={{height,width:'100%',overflow:'hidden',position:'relative'}} className="interactive-chart"><div ref={ref} style={{height:'100%',width:'100%'}}/>{mountedChart&&markers&&onTradeSelect?<TradeMarkers chart={mountedChart} markers={markers} onSelect={onTradeSelect}/>:null}</div>;
 }
