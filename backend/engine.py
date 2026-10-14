@@ -6,10 +6,23 @@ from decimal import Decimal, ROUND_HALF_UP
 from dateutil.relativedelta import relativedelta
 from . import store
 
-VERSION='1.1.0'
+VERSION='1.2.0'
 
 def money(x):
     return float(Decimal(str(x)).quantize(Decimal('.01'),rounding=ROUND_HALF_UP))
+
+def execution_price(p, side, r, reference, day):
+    """Daily-bar fill assumption; real trading restrictions take precedence."""
+    if not r or r['volume']<=0:return 0.,0.,'停牌或无可交易行情'
+    if not reference or reference<=0:return 0.,0.,'缺少有效涨跌停参考价'
+    limit=limit_ratio(p.symbol,day)
+    upper,lower=money(reference*(1+limit)),money(reference*(1-limit))
+    if side=='buy' and r['open']>=upper:return 0.,0.,'开盘涨停，保守模型不买入'
+    if side=='sell' and r['open']<=lower:return 0.,0.,'开盘跌停，卖单保留'
+    low,high=max(r['low'],lower),min(r['high'],upper)
+    if low>high or not low<=r['open']<=high:return 0.,0.,'开盘价不在有效可成交范围'
+    requested=money(Decimal(str(r['open']))*(Decimal(1)+Decimal(str(p.slippage_bps))/Decimal(10000)*(1 if side=='buy' else -1)))
+    return money(max(low,min(high,requested))),requested,None
 
 def dividend_rate(acquired, sold):
     a,b=date.fromisoformat(acquired),date.fromisoformat(sold)
@@ -110,17 +123,8 @@ class Book:
     def execute(self,d,r,reference):
         side=self.pending
         if not side:return
-        why=None
-        if not r or r['volume']<=0: why='停牌或无可交易行情'
+        price,requested,why=execution_price(self.p,side,r,reference,d)
         if side=='sell' and (any(l['available']>d for l in self.lots) or any(e['recognized'] and e['new_shares'] and not e.get('credited') for e in self.entitlements)):why='T+1或送转股份尚未上市'
-        if r and reference:
-            limit=limit_ratio(self.p.symbol,d)
-            upper,lower=money(reference*(1+limit)),money(reference*(1-limit))
-            if side=='buy' and r['open']>=upper:why='开盘涨停，保守模型不买入'
-            if side=='sell' and r['open']<=lower:why='开盘跌停，卖单保留'
-            price=money(Decimal(str(r['open']))*(Decimal(1)+Decimal(str(self.p.slippage_bps))/Decimal(10000)*(1 if side=='buy' else -1)))
-            if not max(r['low'],lower)<=price<=min(r['high'],upper):why='滑点后价格超出当日可成交范围'
-        else:price=0.
         if not why and side=='buy':
             budget=min(self.cash,self.cash*self.p.allocation)
             minimum,step=order_lot(self.p.symbol)
@@ -164,6 +168,7 @@ class Book:
                 self.entry_equity=None
         self.total_fees+=charge
         self.trades.append(dict(date=d,side=side,price=price,shares=qty,amount=cost,**fs,dividend_tax=tax,cash=self.cash))
+        if price!=requested:self.trades[-1].update(execution_note='滑点受行情边界限制',requested_price=requested)
         self.log(d,'买入' if side=='buy' else '卖出',-cost-charge if side=='buy' else cost-charge-tax,qty)
         self.pending=None;self.sell_quantity=None
 

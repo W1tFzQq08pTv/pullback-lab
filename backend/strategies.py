@@ -3,7 +3,7 @@ from .logging_setup import log
 """Versioned daily approximation of the public Martin Luk thread, not intraday replication."""
 import hashlib
 import math
-from .engine import Book, backtest, money, fees, VERSION
+from .engine import Book, backtest, money, fees, VERSION, execution_price
 from . import store
 
 NAMES={'trend_pullback':'趋势回调（SMA）','martin_daily':'Martin Luk 回调（日线量化版）'}
@@ -52,7 +52,9 @@ class MartinBook(Book):
     def execute(self,d,r,reference):
         original=self.p
         if self.pending=='buy' and r and r['volume']>0:
-            price=money(r['open']*(1+self.p.slippage_bps/10000))
+            price,_,blocked=execution_price(self.p,'buy',r,reference,d)
+            if blocked:
+                super().execute(d,r,reference);return
             distance=price-(self.stop or price)
             if distance<=0 or distance/price>self.p.martin_max_stop:
                 self.rejected.append(dict(date=d,side='buy',reason='开盘跌破止损或止损距离超过上限'));self.pending=None;return
