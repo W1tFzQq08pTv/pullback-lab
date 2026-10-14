@@ -19,12 +19,12 @@ def latest(symbol):
     return json.loads(r['profile']) if r else None
 
 def key(p):
-    # Search dimensions and strategy selection do not affect a search of both grids.
+    # Search dimensions do not affect the adaptive grids; selected strategies do.
     fields=p.model_dump(mode='json')
     if p.time_range=='all':
         fields.pop('start',None);fields.pop('end',None)
-    for k in set(SMA_GRID)|set(MARTIN_GRID)|{'strategies'}:fields.pop(k,None)
-    sources={name:hashlib.sha256(Path(__file__).with_name(name).read_bytes()).hexdigest() for name in ('optimize.py','engine.py','strategies.py','quality.py','fallback.py','models.py','trading_rules.py')}
+    for k in set(SMA_GRID)|set(MARTIN_GRID):fields.pop(k,None)
+    sources={name:hashlib.sha256(Path(__file__).with_name(name).read_bytes()).hexdigest() for name in ('optimize.py','search_plan.py','engine.py','strategies.py','quality.py','fallback.py','models.py','trading_rules.py')}
     return hashlib.sha256(store.dumps(dict(params=fields,sources=sources)).encode()).hexdigest()
 
 def search(ident,p,force=False):
@@ -44,7 +44,7 @@ def search(ident,p,force=False):
     folder=store.DATA/'optimizations'/p.symbol/ident
     report=run(p.symbol,max(1,min(4,int(__import__('os').environ.get('PULLBACK_OPTIMIZER_WORKERS','2')))),folder,p,lambda n,m:store.task_update(ident,progress=n,message=m))
     fields={k:v for rows in report['leaders'].values() for k,v in rows[0]['params'].items()}
-    profile=dict(revision=ident,symbol=p.symbol,params=fields,created=store.now(),range=report['range'],snapshot_id=snapshot['id'],objective='total_return',candidates=report['candidates'],unique_accounts=report['unique_accounts'],seconds=report['seconds'],metrics={k:v['metrics'] for k,v in report['verified'].items()},conditions=p.model_dump(mode='json'),fallback=report['fallback'],report=str(folder/'report.json'),note='该股票、该区间的样本内网格最优，按累计收益排序；未做样本外验证。')
+    profile=dict(adaptation=report['adaptation'],revision=ident,symbol=p.symbol,params=fields,created=store.now(),range=report['range'],snapshot_id=snapshot['id'],objective='total_return',candidates=report['candidates'],unique_accounts=report['unique_accounts'],seconds=report['seconds'],metrics={k:v['metrics'] for k,v in report['verified'].items()},conditions=p.model_dump(mode='json'),fallback=report['fallback'],report=str(folder/'report.json'),note=report['adaptation']['note']+'该股票、该区间的样本内网格最优，按累计收益排序；未做样本外验证。')
     with store.connect() as db:
         db.execute('INSERT INTO optimizations VALUES(?,?,?,?,?)',(ident,p.symbol,cache_key,profile['created'],store.dumps(profile)))
         db.execute('INSERT OR REPLACE INTO active_optimization VALUES(?,?)',(p.symbol,ident))

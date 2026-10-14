@@ -14,8 +14,8 @@ from pathlib import Path
 import numpy as np
 from . import store
 from .models import Parameters
-from .quality import validate,eligible
-from .fallback import prepare,slice_payload
+from .quality import eligible
+from .search_plan import plan_search
 from .engine import Book,indicators,VERSION,money
 from .strategies import MartinBook,martin_indicators,multi_backtest
 
@@ -102,27 +102,24 @@ def evaluate(job):
             elif not b.shares and buy[i]:b.pending='buy'
     return ident,b.metrics()
 
-def search_gate(p):
-    # Common warmup covers both exhaustive grids, independent of saved winners.
-    return p.model_copy(update={'strategies':['trend_pullback','martin_daily'],
-        'fast':20,'middle':max(SMA_GRID['middle']),'slow':max(SMA_GRID['slow']),
-        'slope':max(SMA_GRID['slope']),'pullback':max(SMA_GRID['pullback']),
-        'martin_anchor_window':max(MARTIN_GRID['martin_anchor_window']),'market_filter':True})
+def search_plan(payload,p):
+    return plan_search(payload,p,SMA_GRID,MARTIN_GRID,product)
+
 
 def run(symbol,workers,output,params=None,progress=lambda n,m:None):
     started=time.perf_counter();s=store.latest(params.snapshot_id if params else None,symbol=symbol)
     if not s:raise ValueError('股票没有本地快照')
     p=params or Parameters(symbol=symbol,time_range='all',snapshot_id=s['id'],strategies=['trend_pullback','martin_daily'])
     if p.martin_pool_id:raise ValueError('个股寻优仅支持单股条件，请先取消股票池横向排名')
-    p=p.model_copy(update={'snapshot_id':s['id'],'strategies':['trend_pullback','martin_daily'],'fast':20,'middle':50,'slow':200,'slope':10,'pullback':5,'market_filter':True})
+    p=p.model_copy(update={'snapshot_id':s['id']})
     progress(2,'校验数据并缓存指标')
-    data,gate,fallback,problems=prepare({**s['payload'],'quality':validate(s['payload'])},search_gate(p))
-    p=p.model_copy(update={'start':gate.start,'end':gate.end,'data_after':gate.data_after})
+    data,gate,fallback,problems,search_candidates,adaptation=search_plan(s['payload'],p)
+    p=gate
     if problems:raise ValueError(str(problems))
     # Freeze a common range, data version and warmup for every candidate.
     p=p.model_copy(update={'time_range':'custom'})
-    for q in (p.model_copy(update={'slow':200,'slope':20,'middle':120,'pullback':20}),):
-        if eligible(data,q):raise ValueError('搜索网格预热不足，不能改变候选区间')
+    if eligible(data,p):raise ValueError('搜索网格预热不足，不能改变候选区间')
+    progress(4,adaptation['note'])
     output.mkdir(parents=True,exist_ok=True)
     dates,close,low,prev,mas,slopes,market=sma_features(data)
     candidates=[];groups={};jobs=[]
@@ -133,7 +130,7 @@ def run(symbol,workers,output,params=None,progress=lambda n,m:None):
             ident=len(jobs);groups[key]=ident;jobs.append((ident,strategy,fields,buybits,sellbits))
         candidates.append(dict(strategy=strategy,params=fields,group=groups[key]))
     pull_cache={}
-    for fields in product(SMA_GRID):
+    for fields in search_candidates.get('trend_pullback',[]):
         f,m,l,sl,pb=(fields[k] for k in ('fast','middle','slow','slope','pullback'))
         if not f<m<l:continue
         key=(f,m,pb)
@@ -147,7 +144,7 @@ def run(symbol,workers,output,params=None,progress=lambda n,m:None):
         if fields['market_filter']:buy&=np.array([market.get(d,{}).get(l,False) for d in dates])
         add('trend_pullback',fields,buy,close<mas[m])
     martin_cache={}
-    for window in MARTIN_GRID['martin_anchor_window']:
+    for window in sorted({fields['martin_anchor_window'] for fields in search_candidates.get('martin_daily',[])}):
         sig=martin_indicators(data,p.model_copy(update={'martin_anchor_window':window}),explain=True,features=True)
         rows=[sig[d] for d in dates]
         martin_cache[window]=dict(base=np.array([r['conditions']['warmup'] and r['conditions']['trend'] and r['conditions']['rebound'] for r in rows]),
@@ -155,14 +152,14 @@ def run(symbol,workers,output,params=None,progress=lambda n,m:None):
             turnover=np.array([r['features']['turnover'] for r in rows]),
             support=np.array([r['features']['support'] if r['features']['support'] is not None else np.inf for r in rows]),
             risk=np.array([(r['close']-r['stop'])/r['close'] for r in rows]),sell=np.array([r['sell'] for r in rows]))
-    for fields in product(MARTIN_GRID):
+    for fields in search_candidates.get('martin_daily',[]):
         a=martin_cache[fields['martin_anchor_window']]
         buy=a['base']&(a['strength']>=fields['martin_min_return'])&(a['turnover']>=fields['martin_min_turnover'])&(a['support']<=fields['martin_support_tolerance'])&(a['risk']>0)&(a['risk']<=fields['martin_max_stop'])
         add('martin_daily',fields,buy,a['sell'])
     log.info('optimization prepared symbol=%s candidates=%s accounts=%s workers=%s',symbol,len(candidates),len(jobs),workers)
     # Validate cached masks against the real indicator path before spending search time.
     sample=[jobs[i] for i in sorted(set([0,len(jobs)//4,len(jobs)//2,len(jobs)-1]))]
-    sample += [next(j for j in jobs if j[1]=='martin_daily')]
+    sample += [next(j for j in jobs if j[1]==strategy) for strategy in search_candidates]
     for _,strategy,fields,buybits,sellbits in sample:
         q=p.model_copy(update=fields)
         sig=(indicators if strategy=='trend_pullback' else martin_indicators)(data,q)
@@ -177,7 +174,7 @@ def run(symbol,workers,output,params=None,progress=lambda n,m:None):
     with (output/'candidates.jsonl').open('w') as f:
         for row in candidates:
             row['metrics']=scores[row['group']];f.write(store.dumps(row)+'\n')
-    for strategy in ('trend_pullback','martin_daily'):
+    for strategy in search_candidates:
         ranked=sorted((r for r in candidates if r['strategy']==strategy),key=lambda r:(-r['metrics']['total_return'],-r['metrics']['max_drawdown'],r['metrics']['trade_count'],store.dumps(r['params'])))
         leaders[strategy]=ranked[:20]
     progress(93,'使用原回测引擎复核优胜参数')
@@ -190,10 +187,10 @@ def run(symbol,workers,output,params=None,progress=lambda n,m:None):
         verification[strategy]=dict(params=q.model_dump(mode='json'),metrics=real['metrics'])
         (output/(strategy+'-winner.json')).write_text(store.dumps(real))
     report=dict(symbol=symbol,snapshot_id=s['id'],engine=VERSION,objective='total_return',range=dict(start=str(p.start),end=str(p.end)),fallback=fallback,
-        base_params=p.model_dump(mode='json'),grids=dict(trend_pullback=SMA_GRID,martin_daily=MARTIN_GRID),candidates=len(candidates),unique_accounts=len(jobs),
+        adaptation=adaptation,base_params=p.model_dump(mode='json'),grids=dict(trend_pullback=SMA_GRID,martin_daily=MARTIN_GRID),candidates=len(candidates),unique_accounts=len(jobs),
         counts={s:sum(r['strategy']==s for r in candidates) for s in leaders},leaders=leaders,verified=verification,
         baseline={k:v['book']['metrics'] for k,v in baseline['variants'].items()},seconds=round(time.perf_counter()-started,2),
-        note='有限离散网格全覆盖；单股、固定快照、固定区间样本内累计收益排序，同收益按较小回撤、较少成交数排序。不是所有连续参数的全局最优，也不是样本外验证。资金、仓位上限、费用和交易约束固定，Martin的EMA与3R/5R规则固定。')
+        note='满足历史约束的有限离散网格全覆盖；单股、固定快照、固定区间样本内累计收益排序，同收益按较小回撤、较少成交数排序。不是所有连续参数的全局最优，也不是样本外验证。资金、仓位上限、费用和交易约束固定，Martin的EMA与3R/5R规则固定。')
     report['checksum']=hashlib.sha256(store.dumps(report).encode()).hexdigest()
     (output/'report.json').write_text(store.dumps(report));log.info('optimization verified symbol=%s seconds=%s',symbol,report['seconds'])
 

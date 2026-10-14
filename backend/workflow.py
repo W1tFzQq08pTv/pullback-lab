@@ -83,16 +83,17 @@ def run(ident, p):
     p = p.model_copy(update={'snapshot_id': snapshot['id'], 'data_after': None})
 
     child = begin(1)
-    # Match the optimizer's fixed warmup/market gate before searching both grids.
-    from .optimize import search_gate
-    gate = search_gate(p)
-    gate = resolve_range(snapshot['payload'], gate)
-    problems = eligible(snapshot['payload'], gate)
+    # Use exactly the same adaptive plan and quality gates as the optimizer.
+    from .optimize import search_plan
+    _, gate, fallback, problems, _, adaptation = search_plan(snapshot['payload'], p)
+    repair_gate = resolve_range(snapshot['payload'], gate.model_copy(update={'start':p.start,'end':p.end,'time_range':p.time_range,'data_after':None}))
+    problems = eligible(snapshot['payload'], repair_gate)
     if any(i['code'] in REPAIRABLE for i in problems):
         snapshot, report = repair_snapshot(snapshot, lambda n,m: store.task_update(child, progress=n, message=m))
         state['repair'] = report
     p = p.model_copy(update={'snapshot_id':snapshot['id']})
-    _, _, fallback, remaining = prepare(snapshot['payload'], gate.model_copy(update={'snapshot_id':snapshot['id']}))
+    _, gate, fallback, remaining, _, adaptation = search_plan(snapshot['payload'], p)
+    state['adaptation'] = adaptation
     if remaining and all(i['code']=='warmup' for i in remaining):
         message=remaining[0]['message']
         state.update(snapshot_id=snapshot['id'],reason='insufficient_history')
@@ -112,7 +113,7 @@ def run(ident, p):
     state['snapshot_id'] = snapshot['id']
     state['fallback'] = fallback
     log.info('workflow quality id=%s symbol=%s snapshot=%s initial_issues=%s remaining=%s fallback=%s',ident,p.symbol,snapshot['id'],len(problems),len(remaining),store.dumps(fallback))
-    store.task_update(child, 'completed', 100, state.get('data_coverage',{}).get('message') or ('数据校验通过' if not fallback else '已启用并记录完整区间兜底'))
+    store.task_update(child, 'completed', 100, state.get('data_coverage',{}).get('message') or adaptation['note']+('数据校验通过' if not fallback else '已启用并记录完整区间兜底'))
     finish(child)
 
     child = begin(2)
@@ -126,7 +127,7 @@ def run(ident, p):
 
     child = begin(3)
     # Reproduce the interval used to rank candidates, including suffix fallback.
-    parameters = p.model_copy(update={**profile['params'], 'time_range':'custom',
+    parameters = p.model_copy(update={**profile['params'], 'strategies':profile.get('adaptation',{}).get('strategies',p.strategies), 'time_range':'custom',
         'start':date.fromisoformat(profile['range']['start']), 'end':date.fromisoformat(profile['range']['end']),
         'data_after':(profile.get('fallback') or {}).get('excluded_through')})
     _, parameters, run_fallback, remaining = prepare(snapshot['payload'], parameters)
@@ -142,6 +143,7 @@ def run(ident, p):
         raise ValueError('最优参数回测校验未通过：' + str(remaining[:4]))
     store.task_update(child, progress=20, message='使用最优参数计算成交与收益')
     result = multi_backtest(snapshot['payload'], parameters)
+    result['adaptation'] = profile.get('adaptation')
     if run_fallback:
         result['fallback'] = profile.get('fallback') or run_fallback
     if state.get('data_coverage'):
@@ -150,7 +152,7 @@ def run(ident, p):
         state['data_coverage']=coverage
         result['data_coverage']=coverage
     state['steps'][3].update(status='completed', message=state.get('data_coverage',{}).get('message','回测完成'))
-    state.update(run_id=ident, params={**parameters.model_dump(mode='json'), 'time_range':p.time_range, 'data_after':None,
+    state.update(run_id=ident, params={**parameters.model_dump(mode='json'), 'strategies':p.strategies, 'time_range':p.time_range, 'data_after':None,
                                        'start':str(p.start) if p.time_range=='custom' else str(parameters.start),
                                        'end':str(p.end) if p.time_range=='custom' else str(parameters.end)})
     # Completion and run publication share the same transaction as the cancel gate.
