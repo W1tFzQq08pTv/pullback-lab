@@ -10,6 +10,7 @@ from datetime import date
 from ipaddress import ip_address
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import Response, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from . import store, task_scheduler, batch_cache
 from .logging_setup import configure, log
 from . import optimization_profiles, workflow_runner
@@ -344,3 +345,10 @@ def cache_selected(p:CacheBatchRequest):
     if missing:raise HTTPException(400,'未找到证券：'+','.join(missing[:10]))
     try:return dict(batch_id=batch_cache.create([lookup[normalize(s)] for s in p.symbols],p.concurrency))
     except ValueError as exc:raise HTTPException(400,str(exc))
+
+
+# Registered last so API and documentation routes keep priority. Local Vite
+# development does not require a production bundle to exist.
+WEB_DIST = Path(__file__).resolve().parents[1] / 'web' / 'dist'
+if WEB_DIST.is_dir():
+    app.mount('/', StaticFiles(directory=WEB_DIST, html=True), name='web')
