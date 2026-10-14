@@ -16,7 +16,7 @@ from . import store
 from .models import Parameters
 from .quality import validate,eligible
 from .fallback import prepare,slice_payload
-from .engine import Book,indicators,VERSION
+from .engine import Book,indicators,VERSION,money
 from .strategies import MartinBook,martin_indicators,multi_backtest
 
 SMA_GRID=dict(fast=[5,10,15,20,30,40,60],middle=[20,30,40,50,60,90,120],slow=[80,100,150,200],slope=[1,5,10,20],pullback=[1,3,5,10,20],market_filter=[False,True])
@@ -52,6 +52,22 @@ def sma_features(payload):
             ih.append(index[d]);market[d]={n:len(ih)>=n and ih[-1]>sum(ih[-n:])/n for n in SMA_GRID['slow']}
     return dates,np.array(close),np.array(low),np.array(prev),{k:np.array(v) for k,v in mas.items()},{k:np.array(v) for k,v in slopes.items()},market
 
+class SearchValuation:
+    """Only search metrics need daily equity/shares; retain full final valuation.
+
+    Trading, corporate actions, tax settlement and rounding use the real Book.
+    Potential liquidation tax is informational, not deducted from equity.
+    """
+    def valuation(self,d,price):
+        if d==self.valuation_end:return super().valuation(d,price)
+        shares=self.shares
+        receivable=sum(e['gross'] for e in self.entitlements if e['recognized'] and not e['paid'])
+        pending=sum(e['new_shares'] for e in self.entitlements if e['recognized'] and not e.get('credited'))
+        return dict(date=d,equity=money(self.cash+(shares+pending)*price+receivable),shares=shares)
+
+class SearchBook(SearchValuation,Book):pass
+class SearchMartinBook(SearchValuation,MartinBook):pass
+
 _CONTEXT=None
 
 def init_worker(data,params):
@@ -73,7 +89,8 @@ def evaluate(job):
     ident,strategy,fields,buybits,sellbits=job
     p,steps,n=_CONTEXT;p=p.model_copy(update=fields)
     buy=np.unpackbits(np.frombuffer(buybits,dtype=np.uint8),count=n);sell=np.unpackbits(np.frombuffer(sellbits,dtype=np.uint8),count=n)
-    martin=strategy=='martin_daily';b=MartinBook(p) if martin else Book(p)
+    martin=strategy=='martin_daily';b=SearchMartinBook(p) if martin else SearchBook(p)
+    b.valuation_end=steps[-1][0]
     for d,r,a,reference,price,record,i in steps:
         if martin:b.adjust(a)
         b.process_actions(d);b.execute(d,r,reference)
@@ -85,6 +102,13 @@ def evaluate(job):
             elif not b.shares and buy[i]:b.pending='buy'
     return ident,b.metrics()
 
+def search_gate(p):
+    # Common warmup covers both exhaustive grids, independent of saved winners.
+    return p.model_copy(update={'strategies':['trend_pullback','martin_daily'],
+        'fast':20,'middle':max(SMA_GRID['middle']),'slow':max(SMA_GRID['slow']),
+        'slope':max(SMA_GRID['slope']),'pullback':max(SMA_GRID['pullback']),
+        'martin_anchor_window':max(MARTIN_GRID['martin_anchor_window']),'market_filter':True})
+
 def run(symbol,workers,output,params=None,progress=lambda n,m:None):
     started=time.perf_counter();s=store.latest(params.snapshot_id if params else None,symbol=symbol)
     if not s:raise ValueError('股票没有本地快照')
@@ -92,7 +116,8 @@ def run(symbol,workers,output,params=None,progress=lambda n,m:None):
     if p.martin_pool_id:raise ValueError('个股寻优仅支持单股条件，请先取消股票池横向排名')
     p=p.model_copy(update={'snapshot_id':s['id'],'strategies':['trend_pullback','martin_daily'],'fast':20,'middle':50,'slow':200,'slope':10,'pullback':5,'market_filter':True})
     progress(2,'校验数据并缓存指标')
-    data,p,fallback,problems=prepare({**s['payload'],'quality':validate(s['payload'])},p)
+    data,gate,fallback,problems=prepare({**s['payload'],'quality':validate(s['payload'])},search_gate(p))
+    p=p.model_copy(update={'start':gate.start,'end':gate.end,'data_after':gate.data_after})
     if problems:raise ValueError(str(problems))
     # Freeze a common range, data version and warmup for every candidate.
     p=p.model_copy(update={'time_range':'custom'})
@@ -147,7 +172,7 @@ def run(symbol,workers,output,params=None,progress=lambda n,m:None):
     with ProcessPoolExecutor(max_workers=workers,initializer=init_worker,initargs=(data,p.model_dump(mode='json'))) as executor:
         for completed,(ident,metrics) in enumerate(executor.map(evaluate,jobs,chunksize=32),1):
             scores[ident]=metrics
-            if completed%250==0 or completed==len(jobs):progress(10+int(80*completed/len(jobs)),f'搜索账户 {completed}/{len(jobs)}（共 {len(candidates)} 组参数）')
+            if completed%250==0 or completed==len(jobs):progress(10+int(80*completed/len(jobs)),f'参数回测 {completed:,} / {len(jobs):,}（{len(candidates):,} 组参数已合并重复方案）')
     leaders={}
     with (output/'candidates.jsonl').open('w') as f:
         for row in candidates:

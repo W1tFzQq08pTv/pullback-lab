@@ -90,7 +90,7 @@ def start(p):
     from .task_scheduler import submit
     if p.martin_pool_id:
         raise HTTPException(422,'一键研究使用个股寻优，请先在参数设置中取消股票池排名')
-    return submit('workflow',[p.symbol],p.model_dump(mode='json'),lambda ident:execute(ident,p),initial(p.symbol))
+    return submit('workflow',[p.symbol],p.model_dump(mode='json'),lambda ident:execute(ident,p),initial(p.symbol,p.model_dump(mode='json')))
 
 
 def shutdown():
