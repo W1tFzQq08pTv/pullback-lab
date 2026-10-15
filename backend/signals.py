@@ -8,6 +8,9 @@ def latest_signal(snapshot, p):
     from .strategies import martin_indicators,pool_filter,NAMES
     strategy=p.strategies[0]
     if strategy=='martin_daily':p=p.model_copy(update={'market_filter':False})
+    if strategy=='trend_pullback_v2':
+        from .position import v2_parameters
+        p=v2_parameters(p)
     payload=snapshot['payload']
     end=payload['end']
     params=p.model_copy(update={'start':date.fromisoformat(end),'end':date.fromisoformat(end),'snapshot_id':snapshot['id'],'data_after':None})
@@ -31,4 +34,6 @@ def latest_signal(snapshot, p):
             result.update(status='blocked',issues=[issue('pool',end,str(exc),p.symbol)])
             return result
     result.update(signal=signal,flat='买入' if signal['buy'] else '观望',holding=('EMA9退出' if signal['sell'] else '需核对持仓止损与止盈') if strategy=='martin_daily' else ('卖出' if signal['sell'] else '继续持有'))
+    if strategy=='trend_pullback_v2' and not signal['sell']:
+        result['holding']='需核对首仓价与已成交批次'
     return result

@@ -87,6 +87,8 @@ def worker():
             if job is None:CONDITION.wait(timeout=.5);continue
         ident,kind,fn=job;started=time.monotonic();log.info('task started id=%s kind=%s',ident,kind)
         try:fn(ident)
+        except InterruptedError:
+            store.task_update(ident,'cancelled',message='参数寻优已终止，已保存参数保持不变')
         except Exception as exc:
             log.exception('task failed id=%s kind=%s',ident,kind)
             with store.connect() as db:

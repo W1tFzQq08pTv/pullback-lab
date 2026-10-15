@@ -5,8 +5,10 @@ import hashlib
 import math
 from .engine import Book, backtest, money, fees, VERSION, execution_price
 from . import store
+from .position import PositionBook,v2_parameters,RULES as POSITION_RULES
+from .engine import indicators
 
-NAMES={'trend_pullback':'趋势回调（SMA）','martin_daily':'Martin Luk 回调（日线量化版）'}
+NAMES={'trend_pullback_v2':'趋势回调 v2（仓位管理）','trend_pullback':'趋势回调（SMA）','martin_daily':'Martin Luk 回调（日线量化版）'}
 SOURCE='https://x.com/OtherSideBJ/status/2109475443929972794'
 RULES='日线收盘确认、次日开盘尝试；EMA9/21/50；近21/63/126日任一涨幅达到门槛；20日均成交额用收盘价×成交股数估算；AVWAP用典型价×成交量近似，锚点为此前窗口最高点；回踩后突破前日高点；信号日低点止损；3R/5R各减初始仓位约1/3，余仓收盘跌破EMA9退出。缺口支撑、主观形态及分钟信号未复现。'
 
@@ -146,11 +148,13 @@ def multi_backtest(payload,p):
     variants={}
     if 'trend_pullback' in p.strategies:
         variants['trend_pullback']=dict(name=NAMES['trend_pullback'],book=baseline['strategy'],chart=baseline['chart'],rules='SMA趋势过滤、回踩与反弹确认；跌破中期均线退出。')
-    if 'martin_daily' in p.strategies:
+    for strategy in [s for s in p.strategies if s in ('martin_daily','trend_pullback_v2')]:
+        is_v2=strategy=='trend_pullback_v2'
+        q=v2_parameters(p) if is_v2 else p
         data=slice_payload(payload,p.data_after) if p.data_after else payload
-        signals=martin_indicators(data,p)
-        allowed,selection=pool_filter(p)
-        b=MartinBook(p);bars={r['date']:r for r in data['bars']};actions={e['date']:e for e in data['actions'] if e.get('verified')}
+        signals=indicators(data,q) if is_v2 else martin_indicators(data,p)
+        allowed,selection=(None,None) if is_v2 else pool_filter(p)
+        b=PositionBook(q) if is_v2 else MartinBook(p);bars={r['date']:r for r in data['bars']};actions={e['date']:e for e in data['actions'] if e.get('verified')}
         dates=[d for d in data['calendar'] if str(p.start)<=d<=str(p.end)]
         price=next(r['close'] for r in reversed(data['bars']) if r['date']<dates[0])
         for d in dates:
@@ -161,7 +165,7 @@ def multi_backtest(payload,p):
             if d in signals:
                 signals[d]['buy']=signals[d]['buy'] and (allowed is None or d in allowed)
                 b.schedule(signals[d])
-        variants['martin_daily']=dict(name=NAMES['martin_daily'],book=b.result(),chart=[signals[d] for d in dates if d in signals],source=SOURCE,rules=RULES,selection=selection)
+        variants[strategy]=dict(name=NAMES[strategy],book=b.result(),chart=[signals[d] for d in dates if d in signals],rules=POSITION_RULES if is_v2 else RULES,selection=selection,**({} if is_v2 else {'source':SOURCE}))
     first=variants[p.strategies[0]]
     result=dict(engine=VERSION,strategy_id=p.strategies[0],strategy_name=first['name'],strategy=first['book'],chart=first['chart'],benchmark=baseline['benchmark'],variants=variants)
     result['checksum']=hashlib.sha256(store.dumps(result).encode()).hexdigest()
