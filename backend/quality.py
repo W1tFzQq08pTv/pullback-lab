@@ -53,6 +53,8 @@ def warmup_required(p):
     needs=[1]
     if 'trend_pullback' in p.strategies:
         needs.append(max(p.slow,p.middle+p.slope,p.middle+p.pullback-1,2)-1)
+    if 'trend_pullback_v2' in p.strategies:
+        needs.append(max(p.v2_slow,p.v2_middle+p.v2_slope,p.v2_middle+p.v2_pullback-1,2)-1)
     if 'martin_daily' in p.strategies:
         # 126-day return and the anchor both need prior sessions. EMA50's
         # initial observation weight after 126 updates is below 0.7%.
@@ -66,7 +68,7 @@ def eligible(payload, p):
     required=warmup_required(p)
     before=[r for r in payload['bars'] if r['date']<start and r['volume']>0]
     lower=before[-required]['date'] if len(before)>=required else payload['start']
-    problems=[i for i in validate(payload) if i['severity']=='error' and (i['date'] is None or lower<=i['date']<=end) and (p.market_filter or i['symbol']!='000300.SH')]
+    problems=[i for i in validate(payload) if i['severity']=='error' and (i['date'] is None or lower<=i['date']<=end) and ((('trend_pullback' in p.strategies and p.market_filter) or ('trend_pullback_v2' in p.strategies and p.v2_market_filter)) or i['symbol']!='000300.SH')]
     if symbol != '002028.SZ':
         stock=payload.get('stock',{})
         if not supported(symbol,stock.get('name','')):

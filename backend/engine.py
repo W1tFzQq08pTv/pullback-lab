@@ -6,7 +6,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from dateutil.relativedelta import relativedelta
 from . import store
 
-VERSION='1.2.0'
+VERSION='1.3.0'
 
 def money(x):
     return float(Decimal(str(x)).quantize(Decimal('.01'),rounding=ROUND_HALF_UP))
@@ -120,13 +120,16 @@ class Book:
         equity=self.cash+value+receivable
         return dict(date=d,equity=money(equity),cash=money(self.cash),shares=self.shares,pending_shares=pending_shares,market_value=money(value),receivable=money(receivable),potential_tax=money(latent),fees=money(self.total_fees),dividend_tax=money(self.tax))
 
+    def buy_budget(self):
+        return min(self.cash,self.cash*self.p.allocation)
+
     def execute(self,d,r,reference):
         side=self.pending
         if not side:return
         price,requested,why=execution_price(self.p,side,r,reference,d)
         if side=='sell' and (any(l['available']>d for l in self.lots) or any(e['recognized'] and e['new_shares'] and not e.get('credited') for e in self.entitlements)):why='T+1或送转股份尚未上市'
         if not why and side=='buy':
-            budget=min(self.cash,self.cash*self.p.allocation)
+            budget=self.buy_budget()
             minimum,step=order_lot(self.p.symbol)
             qty=int(budget/price/step)*step
             while qty>=minimum:
@@ -139,7 +142,8 @@ class Book:
             if side=='buy':self.pending=None
             return
         if side=='buy':
-            self.entry_equity=self.cash+sum(e['gross'] for e in self.entitlements if not e['paid'])
+            if not self.shares:
+                self.entry_equity=self.cash+sum(e['gross'] for e in self.entitlements if not e['paid'])
             cost=money(qty*price); charge=money(sum(fs.values()))
             self.cash=money(self.cash-cost-charge)
             self.lots.append(dict(shares=qty,acquired=d,available=(date.fromisoformat(d)+timedelta(days=1)).isoformat(),dividends=[]))

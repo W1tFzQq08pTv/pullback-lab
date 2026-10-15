@@ -3,7 +3,17 @@ from typing import Literal
 from pydantic import BaseModel, Field, model_validator
 
 class Parameters(BaseModel):
-    strategies: list[Literal['trend_pullback','martin_daily']] = Field(default_factory=lambda:['trend_pullback'], min_length=1,max_length=2)
+    strategies: list[Literal['trend_pullback','trend_pullback_v2','martin_daily']] = Field(default_factory=lambda:['trend_pullback'], min_length=1,max_length=3)
+    v2_mode: Literal['fixed','up','down'] = 'fixed'
+    v2_allocation: float = Field(1, gt=0, le=1)
+    v2_batches: int = Field(2, ge=1, le=4)
+    v2_step: float = Field(.02, gt=0, le=.1)
+    v2_fast: int = Field(20, ge=2, le=120)
+    v2_middle: int = Field(50, ge=3, le=250)
+    v2_slow: int = Field(200, ge=10, le=500)
+    v2_slope: int = Field(10, ge=1, le=60)
+    v2_pullback: int = Field(5, ge=1, le=30)
+    v2_market_filter: bool = True
     martin_risk: float = Field(.005,gt=0,le=.05)
     martin_max_stop: float = Field(.03,gt=0,le=.1)
     martin_min_return: float = Field(.3,ge=0,le=3)
@@ -40,6 +50,10 @@ class Parameters(BaseModel):
             raise ValueError('均线周期必须满足短期 < 中期 < 长期')
         if self.start < date(2016, 1, 1):
             raise ValueError('首版费用模型支持2016年起的回测')
+        if not self.v2_fast < self.v2_middle < self.v2_slow:
+            raise ValueError('v2均线周期必须满足短期 < 中期 < 长期')
+        if self.v2_mode != 'fixed' and self.v2_batches < 2:
+            raise ValueError('分批模式至少需要两批')
         return self
 
 class SyncRequest(BaseModel):
