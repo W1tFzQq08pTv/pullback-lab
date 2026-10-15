@@ -3,7 +3,7 @@ from .fallback import prepare
 from .quality import warmup_required
 
 MIN_SEARCH_SESSIONS = 20
-NAMES = {'trend_pullback': '趋势回调（SMA）', 'martin_daily': 'Martin 日线版'}
+NAMES = {'trend_pullback_v2':'趋势回调 v2（仓位管理）','trend_pullback': '趋势回调（SMA）', 'martin_daily': 'Martin 日线版'}
 
 
 def plan_search(payload, p, sma_grid, martin_grid, product):
@@ -12,8 +12,9 @@ def plan_search(payload, p, sma_grid, martin_grid, product):
                     (not p.data_after or r['date'] > p.data_after) for r in payload['bars'])
     budget = available - MIN_SEARCH_SESSIONS
     pools = {}
-    if 'trend_pullback' in p.strategies:
-        pools['trend_pullback'] = [(fields, max(fields['slow'], fields['middle'] + fields['slope'],
+    for strategy in ('trend_pullback','trend_pullback_v2'):
+      if strategy in p.strategies:
+        pools[strategy] = [(fields, max(fields['slow'], fields['middle'] + fields['slope'],
             fields['middle'] + fields['pullback'] - 1, 2) - 1)
             for fields in product(sma_grid) if fields['fast'] < fields['middle'] < fields['slow']]
     if 'martin_daily' in p.strategies:
@@ -25,13 +26,16 @@ def plan_search(payload, p, sma_grid, martin_grid, product):
                       for strategy, entries in pools.items()}
         candidates = {strategy: fields for strategy, fields in candidates.items() if fields}
         updates = {'strategies': list(candidates), 'market_filter': True}
-        if 'trend_pullback' in candidates:
-            fields = candidates['trend_pullback']
+        sma = candidates.get('trend_pullback', candidates.get('trend_pullback_v2'))
+        if sma:
+            fields = sma
             updates.update({key: max(row[key] for row in fields)
                             for key in ('middle', 'slow', 'slope', 'pullback')})
             updates['fast'] = min(row['fast'] for row in fields)
             updates['slope'] = min(updates['slope'], limit + 1 - updates['middle'])
             updates['pullback'] = min(updates['pullback'], limit + 2 - updates['middle'])
+        if 'trend_pullback_v2' in candidates:
+            updates.update({'v2_'+key:updates[key] for key in ('fast','middle','slow','slope','pullback','market_filter')})
         if 'martin_daily' in candidates:
             updates['martin_anchor_window'] = max(row['martin_anchor_window'] for row in candidates['martin_daily'])
         gate = p.model_copy(update=updates)

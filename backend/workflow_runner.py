@@ -25,8 +25,8 @@ def cancel(ident):
     with CONTROL, store.connect() as db:
         db.execute('BEGIN IMMEDIATE')
         row = db.execute('SELECT kind,status FROM tasks WHERE id=?',(ident,)).fetchone()
-        if not row or row['kind'] != 'workflow':
-            raise ValueError('不是可终止的一键任务')
+        if not row or row['kind'] not in ('workflow','optimization'):
+            raise ValueError('不是可终止的研究或寻优任务')
         if row['status'] not in ('queued','running','cancelling'):
             return row['status']
         if row['status']=='queued':
